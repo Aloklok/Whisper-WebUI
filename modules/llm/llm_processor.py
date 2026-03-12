@@ -259,6 +259,7 @@ class LLMProcessor:
             from xhtml2pdf import pisa
             from reportlab.pdfbase import pdfmetrics
             from reportlab.pdfbase.ttfonts import TTFont
+            from reportlab.lib.fonts import addMapping
             import os
             
             logger.info("开始生成 PDF 文件...")
@@ -271,47 +272,56 @@ class LLMProcessor:
             barlow_font_path = os.path.join(resources_dir, "Barlow-Regular.ttf")
             noto_font_path = os.path.join(resources_dir, "NotoSansSC-Regular.ttf")
             
-            # 关键修复：显式注册字体，解决黑方框问题
-            # 注册 Barlow
-            barlow_font_name = "Barlow"
-            try:
-                if os.path.exists(barlow_font_path):
-                    pdfmetrics.registerFont(TTFont(barlow_font_name, barlow_font_path))
-                    logger.info(f"成功注册 Barlow 字体: {barlow_font_path}")
-                else:
-                    logger.warning(f"Barlow 字体文件不存在: {barlow_font_path}")
-                    barlow_font_name = "Helvetica" # 回退
-            except Exception as fe:
-                logger.error(f"Barlow 字体注册失败: {fe}")
-                barlow_font_name = "Helvetica"
+            # 1. 注册 Barlow (英文)
+            font_barlow = "Barlow"
+            if os.path.exists(barlow_font_path):
+                pdfmetrics.registerFont(TTFont(font_barlow, barlow_font_path))
+                addMapping(font_barlow, 0, 0, font_barlow) # normal
+                addMapping(font_barlow, 1, 0, font_barlow) # bold
+            else:
+                font_barlow = "Helvetica"
 
-            # 注册 Noto Sans SC (用于中文)
-            noto_font_name = "NotoSansSC"
-            try:
-                if os.path.exists(noto_font_path):
-                    pdfmetrics.registerFont(TTFont(noto_font_name, noto_font_path))
-                    logger.info(f"成功注册 NotoSansSC 字体: {noto_font_path}")
-                else:
-                    logger.warning(f"NotoSansSC 字体文件不存在: {noto_font_path}")
-                    noto_font_name = "YaHei" # 回退
-            except Exception as fe:
-                logger.error(f"NotoSansSC 字体注册失败: {fe}")
-                noto_font_name = "YaHei"
+            # 2. 注册 Noto Sans SC (中文) - 核心修复点
+            font_noto = "NotoSansSC"
+            if os.path.exists(noto_font_path):
+                try:
+                    # 注册为 Unicode 字体
+                    pdfmetrics.registerFont(TTFont(font_noto, noto_font_path))
+                    # 建立样式映射
+                    addMapping(font_noto, 0, 0, font_noto) # normal
+                    addMapping(font_noto, 1, 0, font_noto) # bold
+                    logger.info(f"成功注册中文字体: {font_noto}")
+                except Exception as fe:
+                    logger.error(f"NotoSansSC 注册失败，尝试回退到系统字体: {fe}")
+                    # 如果本地下载的字体损坏，回退到系统自带的微软雅黑
+                    sys_font = "C:/Windows/Fonts/msyh.ttc"
+                    if os.path.exists(sys_font):
+                        pdfmetrics.registerFont(TTFont(font_noto, sys_font, subfontIndex=0))
+                        logger.info(f"成功回退并注册系统字体: {sys_font}")
+                    else:
+                        return None
+            else:
+                logger.error("未找到 NotoSansSC 字体文件，PDF 中文将无法显示。")
+                return None
 
-            # 准备 PDF 专用的 HTML
+            # 准备 PDF 专用的 HTML (xhtml2pdf 特殊语法)
             colors = ["#f87171", "#fbbf24", "#34d399", "#60a5fa", "#a78bfa", "#f472b6"]
             
+            # 使用 <style> 中的 pdf-font 属性强制指定字体
             html_content = f"""
             <html>
             <head>
                 <meta charset="UTF-8">
                 <style>
+                    @page {{
+                        size: a4;
+                        margin: 2cm;
+                    }}
                     body {{ 
-                        font-family: "{noto_font_name}", "{barlow_font_name}", sans-serif;
+                        font-family: "{font_noto}", "{font_barlow}";
                         font-size: 11pt;
                         line-height: 1.6;
                         color: #1f2937;
-                        padding: 30px;
                     }}
                     .title {{
                         text-align: center;
@@ -324,10 +334,10 @@ class LLMProcessor:
                         text-align: center;
                         background-color: #eff6ff;
                         color: #2563eb;
-                        padding: 8px 20px;
+                        padding: 10px;
                         border-radius: 15px;
                         font-weight: bold;
-                        margin: 25px 0;
+                        margin: 20px 0;
                         border: 1px solid #dbeafe;
                     }}
                     .message-box {{
@@ -336,14 +346,14 @@ class LLMProcessor:
                         padding-left: 15px;
                     }}
                     .speaker-header {{
-                        font-family: "{barlow_font_name}", "{noto_font_name}", sans-serif;
+                        font-family: "{font_barlow}", "{font_noto}";
                         font-weight: bold;
                         color: #4b5563;
                         font-size: 10pt;
                         margin-bottom: 4px;
                     }}
                     .text {{
-                        font-family: "{noto_font_name}", "{barlow_font_name}", sans-serif;
+                        font-family: "{font_noto}", "{font_barlow}";
                         font-size: 11pt;
                         color: #111827;
                     }}

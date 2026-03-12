@@ -12,9 +12,13 @@ import whisper
 import gradio as gr
 from argparse import Namespace
 
-from modules.utils.paths import (FASTER_WHISPER_MODELS_DIR, DIARIZATION_MODELS_DIR, UVR_MODELS_DIR, OUTPUT_DIR)
+from modules.utils.paths import (FASTER_WHISPER_MODELS_DIR, DIARIZATION_MODELS_DIR, UVR_MODELS_DIR, OUTPUT_DIR,
+                                 INSANELY_FAST_WHISPER_MODELS_DIR)
 from modules.whisper.data_classes import *
 from modules.whisper.base_transcription_pipeline import BaseTranscriptionPipeline
+from modules.utils.logger import get_logger
+
+logger = get_logger()
 
 
 class FasterWhisperInference(BaseTranscriptionPipeline):
@@ -35,7 +39,7 @@ class FasterWhisperInference(BaseTranscriptionPipeline):
 
         self.model_paths = self.get_model_paths()
         self.device = self.get_device()
-        self.available_models = self.model_paths.keys()
+        self.available_models = get_labeled_choices(list(self.model_paths.keys()))
 
     def transcribe(self,
                    audio: Union[str, BinaryIO, np.ndarray],
@@ -67,40 +71,96 @@ class FasterWhisperInference(BaseTranscriptionPipeline):
         start_time = time.time()
 
         params = WhisperParams.from_list(list(whisper_params))
+        normalized_model_size = normalize_model_name(params.model_size)
+
+        # 动态路由：如果用户在 Faster-Whisper 下拉框中选了 Qwen 模型，自动切换到 insanely_fast 后端处理
+        if "qwen" in normalized_model_size.lower():
+            from modules.whisper.insanely_fast_whisper_inference import InsanelyFastWhisperInference
+            logger.info(f"检测到 Qwen 模型 ({normalized_model_size})，自动切换至 Transformers (Insanely Fast) 后端执行...")
+            # 临时创建一个 insanely_fast 实例来处理
+            temp_inf = InsanelyFastWhisperInference(
+                model_dir=INSANELY_FAST_WHISPER_MODELS_DIR,
+                diarization_model_dir=self.diarizer.model_dir,
+                uvr_model_dir=self.music_separator.model_dir,
+                output_dir=self.output_dir
+            )
+            return temp_inf.transcribe(audio, progress, progress_callback, *whisper_params)
 
         if params.model_size != self.current_model_size or self.model is None or self.current_compute_type != params.compute_type:
             self.update_model(params.model_size, params.compute_type, progress)
 
-        segments, info = self.model.transcribe(
-            audio=audio,
-            language=params.lang,
-            task="translate" if params.is_translate else "transcribe",
-            beam_size=params.beam_size,
-            log_prob_threshold=params.log_prob_threshold,
-            no_speech_threshold=params.no_speech_threshold,
-            best_of=params.best_of,
-            patience=params.patience,
-            temperature=params.temperature,
-            initial_prompt=params.initial_prompt,
-            compression_ratio_threshold=params.compression_ratio_threshold,
-            length_penalty=params.length_penalty,
-            repetition_penalty=params.repetition_penalty,
-            no_repeat_ngram_size=params.no_repeat_ngram_size,
-            prefix=params.prefix,
-            suppress_blank=params.suppress_blank,
-            suppress_tokens=params.suppress_tokens,
-            max_initial_timestamp=params.max_initial_timestamp,
-            word_timestamps=True,  # Set it to always True as it reduces hallucinations
-            prepend_punctuations=params.prepend_punctuations,
-            append_punctuations=params.append_punctuations,
-            max_new_tokens=params.max_new_tokens,
-            chunk_length=params.chunk_length,
-            hallucination_silence_threshold=params.hallucination_silence_threshold,
-            hotwords=params.hotwords,
-            language_detection_threshold=params.language_detection_threshold,
-            language_detection_segments=params.language_detection_segments,
-            prompt_reset_on_temperature=params.prompt_reset_on_temperature,
-        )
+        # 尝试使用高性能 BatchedInferencePipeline (限 Faster-Whisper)
+        try:
+            from faster_whisper import BatchedInferencePipeline
+            use_batched = True
+        except ImportError:
+            use_batched = False
+
+        if use_batched and params.batch_size > 1:
+            logger.info(f"使用 BatchedInferencePipeline 加速推理，Batch Size: {params.batch_size}")
+            batched_model = BatchedInferencePipeline(model=self.model)
+            segments, info = batched_model.transcribe(
+                audio=audio,
+                language=params.lang,
+                task="translate" if params.is_translate else "transcribe",
+                beam_size=params.beam_size,
+                log_prob_threshold=params.log_prob_threshold,
+                no_speech_threshold=params.no_speech_threshold,
+                best_of=params.best_of,
+                patience=params.patience,
+                temperature=params.temperature,
+                initial_prompt=params.initial_prompt,
+                compression_ratio_threshold=params.compression_ratio_threshold,
+                length_penalty=params.length_penalty,
+                repetition_penalty=params.repetition_penalty,
+                no_repeat_ngram_size=params.no_repeat_ngram_size,
+                prefix=params.prefix,
+                suppress_blank=params.suppress_blank,
+                suppress_tokens=params.suppress_tokens,
+                max_initial_timestamp=params.max_initial_timestamp,
+                word_timestamps=True,
+                prepend_punctuations=params.prepend_punctuations,
+                append_punctuations=params.append_punctuations,
+                max_new_tokens=params.max_new_tokens,
+                chunk_length=params.chunk_length,
+                hallucination_silence_threshold=params.hallucination_silence_threshold,
+                hotwords=params.hotwords,
+                language_detection_threshold=params.language_detection_threshold,
+                language_detection_segments=params.language_detection_segments,
+                prompt_reset_on_temperature=params.prompt_reset_on_temperature,
+                batch_size=params.batch_size
+            )
+        else:
+            segments, info = self.model.transcribe(
+                audio=audio,
+                language=params.lang,
+                task="translate" if params.is_translate else "transcribe",
+                beam_size=params.beam_size,
+                log_prob_threshold=params.log_prob_threshold,
+                no_speech_threshold=params.no_speech_threshold,
+                best_of=params.best_of,
+                patience=params.patience,
+                temperature=params.temperature,
+                initial_prompt=params.initial_prompt,
+                compression_ratio_threshold=params.compression_ratio_threshold,
+                length_penalty=params.length_penalty,
+                repetition_penalty=params.repetition_penalty,
+                no_repeat_ngram_size=params.no_repeat_ngram_size,
+                prefix=params.prefix,
+                suppress_blank=params.suppress_blank,
+                suppress_tokens=params.suppress_tokens,
+                max_initial_timestamp=params.max_initial_timestamp,
+                word_timestamps=True,  # Set it to always True as it reduces hallucinations
+                prepend_punctuations=params.prepend_punctuations,
+                append_punctuations=params.append_punctuations,
+                max_new_tokens=params.max_new_tokens,
+                chunk_length=params.chunk_length,
+                hallucination_silence_threshold=params.hallucination_silence_threshold,
+                hotwords=params.hotwords,
+                language_detection_threshold=params.language_detection_threshold,
+                language_detection_segments=params.language_detection_segments,
+                prompt_reset_on_temperature=params.prompt_reset_on_temperature,
+            )
         progress(0, desc="Loading audio..")
 
         segments_result = []
@@ -134,6 +194,7 @@ class FasterWhisperInference(BaseTranscriptionPipeline):
             Indicator to show progress directly in gradio.
         """
         progress(0, desc="Initializing Model..")
+        model_size = normalize_model_name(model_size)
 
         model_size_dirname = model_size.replace("/", "--") if "/" in model_size else model_size
         if model_size not in self.model_paths and model_size_dirname not in self.model_paths:
@@ -185,6 +246,13 @@ class FasterWhisperInference(BaseTranscriptionPipeline):
 
             if model_name not in whisper.available_models():
                 model_paths[model_name] = os.path.join(self.model_dir, model_name)
+        
+        # 增加 Qwen 模型以支持在 UI 下拉框中显示
+        qwen_models = ["Qwen/Qwen3-ASR-1.7B", "Qwen/Qwen3-ASR-0.6B"]
+        for qm in qwen_models:
+            if qm not in model_paths:
+                model_paths[qm] = qm
+
         return model_paths
 
     @staticmethod

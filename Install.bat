@@ -8,8 +8,9 @@ echo checked the venv folder. now installing requirements..
 
 call "%~dp0\venv\scripts\activate"
 
-python -m pip install -U pip
-pip install -r requirements.txt
+python -m pip install -U pip wheel
+:: 关键修改：增加了 --no-cache-dir 参数，不再占用 C 盘缓存空间
+pip install --no-build-isolation --no-cache-dir -r requirements.txt
 
 if errorlevel 1 (
     echo.

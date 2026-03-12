@@ -1,7 +1,7 @@
 import faster_whisper.transcribe
 import gradio as gr
 import torch
-from typing import Optional, Dict, List, Union, NamedTuple
+from typing import Optional, Dict, List, Union, NamedTuple, Tuple
 from fastapi import Query
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 from gradio_i18n import Translate, gettext as _
@@ -16,6 +16,52 @@ class WhisperImpl(Enum):
     WHISPER = "whisper"
     FASTER_WHISPER = "faster-whisper"
     INSANELY_FAST_WHISPER = "insanely_fast_whisper"
+
+
+# Whisper 模型元数据：包含标签、发布时间和权重排序
+MODEL_METADATA = {
+    "large-v3-turbo": {"label": "🚀 large-v3-turbo (2024-09 | 推荐 | 最快且极准)", "weight": 110},
+    "turbo": {"label": "⚡ turbo (2024-09 | OpenAI 官方极速版)", "weight": 95},
+    "large-v3": {"label": "🥇 large-v3 (2023-11 | 旗舰版 | 追求最高准度)", "weight": 90},
+    "large-v2": {"label": "🥈 large-v2 (经典多语种旗舰)", "weight": 85},
+    "large-v1": {"label": "🥉 large-v1 (早期大模型)", "weight": 80},
+    "medium": {"label": "⚖️ medium (平衡版 | 8GB 显存推荐)", "weight": 70},
+    "medium.en": {"label": "⚖️ medium.en (平衡版 | 仅英文)", "weight": 69},
+    "small": {"label": "📉 small (轻量版 | 低显存首选)", "weight": 60},
+    "small.en": {"label": "📉 small.en (轻量版 | 仅英文)", "weight": 59},
+    "base": {"label": "📦 base (极简版)", "weight": 50},
+    "base.en": {"label": "📦 base.en (极简版 | 仅英文)", "weight": 49},
+    "tiny": {"label": "🕊️ tiny (实验室级速度 | 测试用)", "weight": 40},
+    "tiny.en": {"label": "🕊️ tiny.en (实验室级速度 | 仅英文)", "weight": 39},
+    "distil-large-v3": {"label": "🧪 distil-large-v3 (HuggingFace 蒸馏加速版)", "weight": 92},
+    "distil-large-v2": {"label": "🧪 distil-large-v2 (HuggingFace 蒸馏加速版)", "weight": 86},
+    "Qwen/Qwen3-ASR-1.7B": {"label": "🌌 Qwen/Qwen3-ASR-1.7B (2026-01 | 阿里巅峰 | 52语种/方言)", "weight": 30},
+    "Qwen/Qwen3-ASR-0.6B": {"label": "🌌 Qwen/Qwen3-ASR-0.6B (2026-01 | 极速全能 | 需 12GB+ 显存)", "weight": 35},
+}
+
+
+def get_labeled_choices(available_models: List[str]) -> List[Tuple[str, str]]:
+    """
+    根据模型列表生成带标签和排序的 Dropdown 选项。
+    返回格式：[(label, value), ...]
+    """
+    result = []
+    for model in available_models:
+        meta = MODEL_METADATA.get(model, {"label": model, "weight": 0})
+        result.append((meta["label"], model))
+
+    # 按权重降序排列，由于权重相同或为0（自定义模型），保持原顺序或按名称
+    return sorted(result, key=lambda x: MODEL_METADATA.get(x[1], {}).get("weight", 0), reverse=True)
+
+
+def normalize_model_name(name_or_label: str) -> str:
+    """
+    标准化模型名称：如果传入的是带有表情或描述的标签，则将其转换回原始模型 ID。
+    例如：'🚀 large-v3-turbo (...)' -> 'large-v3-turbo'
+    """
+    # 建立反向映射缓存
+    label_to_id = {v["label"]: k for k, v in MODEL_METADATA.items()}
+    return label_to_id.get(name_or_label, name_or_label)
 
 
 class Segment(BaseModel):
@@ -164,6 +210,8 @@ class DiarizationParams(BaseParams):
         default=True,
         description="Offload Diarization model after Speaker diarization"
     )
+    min_speakers: Optional[int] = Field(default=None, description="Minimum number of speakers")
+    max_speakers: Optional[int] = Field(default=None, description="Maximum number of speakers")
 
     @classmethod
     def to_gradio_inputs(cls,
@@ -188,6 +236,18 @@ class DiarizationParams(BaseParams):
             gr.Checkbox(
                 label=_("Offload sub model when finished"),
                 value=defaults.get("enable_offload", cls.__fields__["enable_offload"].default),
+            ),
+            gr.Number(
+                label=_("Min Speakers"),
+                value=defaults.get("min_speakers", GRADIO_NONE_NUMBER_MIN),
+                precision=0,
+                info=_("Minimum number of speakers. (Optional)")
+            ),
+            gr.Number(
+                label=_("Max Speakers"),
+                value=defaults.get("max_speakers", GRADIO_NONE_NUMBER_MIN),
+                precision=0,
+                info=_("Maximum number of speakers. (Optional)")
             )
         ]
 
@@ -257,7 +317,7 @@ class BGMSeparationParams(BaseParams):
 
 class WhisperParams(BaseParams):
     """Whisper parameters"""
-    model_size: str = Field(default="large-v2", description="Whisper model size")
+    model_size: str = Field(default="large-v3-turbo", description="Whisper model size")
     lang: Optional[str] = Field(default=None, description="Source language of the file to transcribe")
     is_translate: bool = Field(default=False, description="Translate speech to English end-to-end")
     beam_size: int = Field(default=5, ge=1, description="Beam size for decoding")
@@ -271,7 +331,7 @@ class WhisperParams(BaseParams):
         le=1.0,
         description="Threshold for detecting silence"
     )
-    compute_type: str = Field(default="float16", description="Computation type for transcription")
+    compute_type: str = Field(default="int8", description="Computation type for transcription")
     best_of: int = Field(default=5, ge=1, description="Number of candidates when sampling")
     patience: float = Field(default=1.0, gt=0, description="Beam search patience factor")
     condition_on_previous_text: bool = Field(
@@ -561,7 +621,7 @@ class WhisperParams(BaseParams):
             for input_component in faster_whisper_inputs:
                 input_component.visible = False
 
-        if whisper_type != WhisperImpl.INSANELY_FAST_WHISPER.value:
+        if whisper_type != WhisperImpl.INSANELY_FAST_WHISPER.value and whisper_type != WhisperImpl.FASTER_WHISPER.value:
             for input_component in insanely_fast_whisper_inputs:
                 input_component.visible = False
 

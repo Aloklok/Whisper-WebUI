@@ -7,9 +7,13 @@ import torch
 import os
 from argparse import Namespace
 
-from modules.utils.paths import (WHISPER_MODELS_DIR, DIARIZATION_MODELS_DIR, OUTPUT_DIR, UVR_MODELS_DIR)
+from modules.utils.paths import (WHISPER_MODELS_DIR, DIARIZATION_MODELS_DIR, OUTPUT_DIR, UVR_MODELS_DIR,
+                                 INSANELY_FAST_WHISPER_MODELS_DIR)
 from modules.whisper.base_transcription_pipeline import BaseTranscriptionPipeline
 from modules.whisper.data_classes import *
+from modules.utils.logger import get_logger
+
+logger = get_logger()
 
 
 class WhisperInference(BaseTranscriptionPipeline):
@@ -25,6 +29,9 @@ class WhisperInference(BaseTranscriptionPipeline):
             diarization_model_dir=diarization_model_dir,
             uvr_model_dir=uvr_model_dir
         )
+        qwen_models = ["Qwen/Qwen3-ASR-1.7B", "Qwen/Qwen3-ASR-0.6B"]
+        available_models = qwen_models + whisper.available_models()
+        self.available_models = get_labeled_choices(available_models)
 
     def transcribe(self,
                    audio: Union[str, np.ndarray, torch.Tensor],
@@ -55,6 +62,20 @@ class WhisperInference(BaseTranscriptionPipeline):
         """
         start_time = time.time()
         params = WhisperParams.from_list(list(whisper_params))
+        normalized_model_size = normalize_model_name(params.model_size)
+
+        # 动态路由：如果用户在 OpenAI Whisper 下拉框中选了 Qwen 模型，自动切换到 insanely_fast 后端处理
+        if "qwen" in normalized_model_size.lower():
+            from modules.whisper.insanely_fast_whisper_inference import InsanelyFastWhisperInference
+            logger.info(f"检测到 Qwen 模型 ({normalized_model_size})，自动切换至 Transformers (Insanely Fast) 后端执行...")
+            # 临时创建一个 insanely_fast 实例来处理
+            temp_inf = InsanelyFastWhisperInference(
+                model_dir=INSANELY_FAST_WHISPER_MODELS_DIR,
+                diarization_model_dir=self.diarizer.model_dir,
+                uvr_model_dir=self.music_separator.model_dir,
+                output_dir=self.output_dir
+            )
+            return temp_inf.transcribe(audio, progress, progress_callback, *whisper_params)
 
         if params.model_size != self.current_model_size or self.model is None or self.current_compute_type != params.compute_type:
             self.update_model(params.model_size, params.compute_type, progress)
@@ -105,6 +126,7 @@ class WhisperInference(BaseTranscriptionPipeline):
             Indicator to show progress directly in gradio.
         """
         progress(0, desc="Initializing Model..")
+        model_size = normalize_model_name(model_size)
         self.current_compute_type = compute_type
         self.current_model_size = model_size
         self.model = whisper.load_model(

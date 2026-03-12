@@ -27,7 +27,9 @@ class Diarizer:
             audio: Union[str, BinaryIO, np.ndarray],
             transcribed_result: List[Segment],
             use_auth_token: str,
-            device: Optional[str] = None
+            device: Optional[str] = None,
+            min_speakers: Optional[int] = None,
+            max_speakers: Optional[int] = None
             ) -> Tuple[List[Segment], float]:
         """
         Diarize transcribed result as a post-processing
@@ -64,7 +66,11 @@ class Diarizer:
 
         audio = load_audio(audio)
 
-        diarization_segments = self.pipe(audio)
+        diarization_segments = self.pipe(
+            audio,
+            min_speakers=min_speakers,
+            max_speakers=max_speakers
+        )
         diarized_result = assign_word_speakers(
             diarization_segments,
             {"segments": transcribed_result}

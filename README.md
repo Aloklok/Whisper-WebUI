@@ -16,7 +16,10 @@ If you wish to try this on Colab, you can do it in [here](https://colab.research
 - Generate subtitles from various sources, including :
   - Files
   - Youtube
+  - Podcast ( [xiaoyuzhoufm.com](https://www.xiaoyuzhoufm.com/) supported )
   - Microphone
+- Support **Speculative Decoding** in `insanely-fast-whisper` implementation.
+- One-click **Cache Cleaning** to keep your disk healthy.
 - Currently supported subtitle formats : 
   - SRT
   - WebVTT
@@ -109,6 +112,16 @@ According to faster-whisper, the efficiency of the optimized whisper model is as
 | faster-whisper    | fp16      | 5         | 54s   | 4755MB          | 3244MB          |
 
 If you want to use an implementation other than faster-whisper, use `--whisper_type` arg and the repository name.<br>
+Example for **Speculative Decoding** (Faster speed with `large` models):
+```shell
+python app.py --whisper_type insanely_fast_whisper
+```
+
+> [!WARNING]
+> **Speculative Decoding** requires loading two models (e.g., large-v3 and tiny) simultaneously.
+> - **NOT Recommended**: Users with **8GB VRAM or less**. It may cause OOM or system lag.
+> - **Recommended**: Users with **12GB VRAM or more** (e.g., RTX 3060 12G, RTX 4070+).
+
 Read [wiki](https://github.com/jhj0517/Whisper-WebUI/wiki/Command-Line-Arguments) for more info about CLI args.
 
 If you want to use a fine-tuned model, manually place the models in `models/Whisper/` corresponding to the implementation.

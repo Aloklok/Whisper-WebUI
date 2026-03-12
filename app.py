@@ -1,8 +1,54 @@
 import os
+import tempfile
+import warnings
+import logging
+
+# 屏蔽第三方库的各种非致命警告 (UserWarning, FutureWarning, etc.)
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
+# 针对特定库（如 pyannote, speechbrain）静音，仅显示 ERROR
+logging.getLogger("speechbrain").setLevel(logging.ERROR)
+logging.getLogger("pyannote").setLevel(logging.ERROR)
+logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
+# 设置环境变量，从系统层面减少警告输出
+os.environ["PYTHONWARNINGS"] = "ignore"
+
+# 强制将 Gradio 和系统临时目录设置在当前项目所在的 D 盘，防止 C 盘空间不足
+CUSTOM_TEMP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "temp")
+os.makedirs(CUSTOM_TEMP_DIR, exist_ok=True)
+os.environ["GRADIO_TEMP_DIR"] = CUSTOM_TEMP_DIR
+tempfile.tempdir = CUSTOM_TEMP_DIR
+
 import argparse
 import gradio as gr
 from gradio_i18n import Translate, gettext as _
 import yaml
+import torch
+
+# 适配 PyTorch 2.6+ 的安全机制 (策略 B：全局信任模型来源)
+# 由于 pyannote 内部类极其复杂且多变，逐个添加白名单极易导致“打地鼠”式连续报错。
+# 鉴于模型来源于受信任的 HuggingFace 官方，我们通过补丁强制关闭 weights_only 检查。
+import functools
+import inspect
+
+# 尝试添加基础安全全局变量，防止某些场景下的反序列化失败
+try:
+    if hasattr(torch.serialization, 'add_safe_globals'):
+        torch.serialization.add_safe_globals([torch.torch_version.TorchVersion])
+except Exception:
+    pass
+
+_original_torch_load = torch.load
+_load_params = inspect.signature(_original_torch_load).parameters
+
+@functools.wraps(_original_torch_load)
+def _patched_torch_load(*args, **kwargs):
+    # 如果当前 Torch 版本支持 weights_only 参数，强制设为 False 以兼容旧模型结构
+    if 'weights_only' in _load_params:
+        kwargs['weights_only'] = False
+    return _original_torch_load(*args, **kwargs)
+
+torch.load = _patched_torch_load
 
 from modules.utils.paths import (FASTER_WHISPER_MODELS_DIR, DIARIZATION_MODELS_DIR, OUTPUT_DIR, WHISPER_MODELS_DIR,
                                  INSANELY_FAST_WHISPER_MODELS_DIR, NLLB_MODELS_DIR, DEFAULT_PARAMETERS_CONFIG_PATH,
@@ -13,12 +59,115 @@ from modules.translation.nllb_inference import NLLBInference
 from modules.ui.htmls import *
 from modules.utils.cli_manager import str2bool
 from modules.utils.youtube_manager import get_ytmetas
+from modules.utils.podcast_manager import download_podcast_audio
 from modules.translation.deepl_api import DeepLAPI
 from modules.whisper.data_classes import *
+from modules.llm.llm_processor import LLMProcessor
 from modules.utils.logger import get_logger
+from clean_temp import clean_temp_dir
 
 
 logger = get_logger()
+
+
+def format_refined_text_to_html(text: str) -> str:
+    if not text or text.startswith("Error"):
+        return f"<div style='color: red; padding: 20px;'>{text}</div>"
+    
+    # 颜色与图标库
+    colors = ["#f87171", "#fbbf24", "#34d399", "#60a5fa", "#a78bfa", "#f472b6"]
+    icons = ["👤", "🐧", "🌟", "🍀", "💎", "🔥"]
+    
+    html = '<div class="transcript-container">'
+    
+    lines = text.split('\n')
+    current_speaker = None
+    current_content = []
+    
+    def flush_message(speaker, content_list):
+        if not speaker or not content_list:
+            return ""
+        
+        try:
+            # 提取数字，例如 SPEAKER_01 -> 1
+            idx_str = ''.join(filter(str.isdigit, speaker))
+            idx = int(idx_str) if idx_str else 0
+        except:
+            idx = 0
+            
+        color = colors[idx % len(colors)]
+        icon = icons[idx % len(icons)]
+        name = f"发言人 {idx}"
+        content = "\n".join(content_list).strip()
+        
+        if not content: return ""
+        
+        return f"""
+        <div class="transcript-item">
+            <div class="speaker-avatar" style="background-color: {color}">{icon}</div>
+            <div class="speaker-body">
+                <div class="speaker-header">
+                    <span class="speaker-name">{name}</span>
+                </div>
+                <div class="speaker-text">{content}</div>
+            </div>
+        </div>
+        """
+
+    section_started = False
+    for line in lines:
+        line = line.strip()
+        if not line: continue
+        
+        # 处理话题/核心议题标签
+        if (line.startswith('【') and '】' in line) or line.startswith('###'):
+            # 先把当前正在记录的消息刷新掉
+            msg_html = flush_message(current_speaker, current_content)
+            
+            # 如果已经在一个话题块里，先闭合它
+            if section_started:
+                html += msg_html + '</div>'
+            else:
+                html += msg_html
+                
+            current_speaker = None
+            current_content = []
+            
+            # 开启新的话题块容器，这样 sticky header 就能“推走”旧的
+            topic = line.strip('【】# ')
+            html += '<div class="topic-section">'
+            html += f'<div class="topic-tag">{topic}</div>'
+            section_started = True
+            continue
+            
+        # 处理说话人标签 SPEAKER_XX|
+        if '|' in line and line.startswith('SPEAKER_'):
+            parts = line.split('|', 1)
+            speaker_tag = parts[0]
+            content = parts[1] if len(parts) > 1 else ""
+            
+            if speaker_tag == current_speaker:
+                current_content.append(content)
+            else:
+                html += flush_message(current_speaker, current_content)
+                current_speaker = speaker_tag
+                current_content = [content]
+        else:
+            if current_speaker:
+                current_content.append(line)
+            else:
+                # 兜底：处理没有标签的纯文本
+                html += f'<div class="speaker-text" style="margin-bottom:15px; border-radius:12px; background:#f0f0f0; padding:10px 15px;">{line}</div>'
+                
+    # 结尾闭合
+    last_msg = flush_message(current_speaker, current_content)
+    if section_started:
+        html += last_msg + '</div>'
+    else:
+        html += last_msg
+        
+    html += '</div>'
+    return html
 
 
 class App:
@@ -67,25 +216,36 @@ class App:
                                        label=_("Add a timestamp to the end of the filename"),
                                        interactive=True)
 
+        def get_status_text(is_enabled):
+            return " (已开启)" if is_enabled else " (已关闭)"
+
         with gr.Accordion(_("Advanced Parameters"), open=False):
             whisper_inputs = WhisperParams.to_gradio_inputs(defaults=whisper_params, only_advanced=True,
                                                             whisper_type=self.args.whisper_type,
                                                             available_compute_types=self.whisper_inf.available_compute_types,
                                                             compute_type=self.whisper_inf.current_compute_type)
 
-        with gr.Accordion(_("Background Music Remover Filter"), open=False):
+        uvr_label = _("Background Music Remover Filter")
+        with gr.Accordion(f"{uvr_label}{get_status_text(uvr_params['is_separate_bgm'])}", open=False) as acc_uvr:
             uvr_inputs = BGMSeparationParams.to_gradio_input(defaults=uvr_params,
                                                              available_models=self.whisper_inf.music_separator.available_models,
                                                              available_devices=self.whisper_inf.music_separator.available_devices,
                                                              device=self.whisper_inf.music_separator.device)
 
-        with gr.Accordion(_("Voice Detection Filter"), open=False):
+        vad_label = _("Voice Detection Filter")
+        with gr.Accordion(f"{vad_label}{get_status_text(vad_params['vad_filter'])}", open=False) as acc_vad:
             vad_inputs = VadParams.to_gradio_inputs(defaults=vad_params)
 
-        with gr.Accordion(_("Diarization"), open=False):
+        diarization_label = _("Diarization")
+        with gr.Accordion(f"{diarization_label}{get_status_text(diarization_params['is_diarize'])}", open=False) as acc_diarization:
             diarization_inputs = DiarizationParams.to_gradio_inputs(defaults=diarization_params,
                                                                     available_devices=self.whisper_inf.diarizer.available_device,
                                                                     device=self.whisper_inf.diarizer.device)
+
+        # 绑定状态变化回调
+        uvr_inputs[0].change(fn=lambda x: gr.update(label=f"{uvr_label}{get_status_text(x)}"), inputs=uvr_inputs[0], outputs=acc_uvr)
+        vad_inputs[0].change(fn=lambda x: gr.update(label=f"{vad_label}{get_status_text(x)}"), inputs=vad_inputs[0], outputs=acc_vad)
+        diarization_inputs[0].change(fn=lambda x: gr.update(label=f"{diarization_label}{get_status_text(x)}"), inputs=diarization_inputs[0], outputs=acc_diarization)
 
         pipeline_inputs = [dd_model, dd_lang, cb_translate] + whisper_inputs + vad_inputs + diarization_inputs + uvr_inputs
 
@@ -112,6 +272,16 @@ class App:
                         gr.Markdown(MARKDOWN, elem_id="md_project")
                 with gr.Tabs():
                     with gr.TabItem(_("File")):  # tab1
+                        with gr.Accordion(_("Podcast Link (小宇宙)"), open=True):
+                            with gr.Row():
+                                tb_podcast_link = gr.Textbox(
+                                    label=_("Podcast URL"),
+                                    placeholder="https://www.xiaoyuzhoufm.com/episode/...",
+                                    scale=4
+                                )
+                                btn_download_podcast = gr.Button(_("Download"), scale=1, variant="secondary")
+                            tb_podcast_status = gr.Textbox(label=_("Status"), interactive=False, visible=False)
+
                         with gr.Column():
                             input_file = gr.Files(type="filepath", label=_("Upload File here"), file_types=MEDIA_EXTENSION)
                             tb_input_folder = gr.Textbox(label="Input Folder Path (Optional)",
@@ -132,10 +302,25 @@ class App:
 
                         with gr.Row():
                             btn_run = gr.Button(_("GENERATE SUBTITLE FILE"), variant="primary")
+                        
                         with gr.Row():
-                            tb_indicator = gr.Textbox(label=_("Output"), scale=5)
+                            tb_indicator = gr.Textbox(label=_("Output"), scale=5, interactive=True)
                             files_subtitles = gr.Files(label=_("Downloadable output file"), scale=3, interactive=False)
                             btn_openfolder = gr.Button('📂', scale=1)
+
+                        # AI 洗稿/总结预览区
+                        with gr.Accordion("✨ AI 一键整理 (LLM Post-Processing)", open=False):
+                            with gr.Row():
+                                btn_ai_refine = gr.Button("✨ AI 一键整理润色", variant="secondary")
+                            
+                            with gr.Row():
+                                with gr.Column(scale=1): # 左侧留白
+                                    pass
+                                with gr.Column(scale=8): # 核心阅读区域
+                                    tb_ai_refined_preview = gr.HTML(label="AI 整理预览")
+                                    file_ai_refined = gr.Files(label="AI 整理结果下载 (含美化版 HTML)", interactive=False)
+                                with gr.Column(scale=1): # 右侧留白
+                                    pass
 
                         params = [input_file, tb_input_folder, cb_include_subdirectory, cb_save_same_dir,
                                   dd_file_format, cb_timestamp]
@@ -144,6 +329,86 @@ class App:
                                       inputs=params,
                                       outputs=[tb_indicator, files_subtitles])
                         btn_openfolder.click(fn=lambda: self.open_folder("outputs"), inputs=None, outputs=None)
+
+                        def _download_podcast(url):
+                            if not url or not url.strip():
+                                return gr.update(), gr.update(value="请输入播客链接", visible=True)
+                            try:
+                                audio_path, title = download_podcast_audio(url)
+                                return gr.update(value=[audio_path]), gr.update(value=f"✅ 下载完成: {title}", visible=True)
+                            except Exception as e:
+                                return gr.update(), gr.update(value=f"❌ 下载失败: {e}", visible=True)
+
+                        btn_download_podcast.click(
+                            fn=_download_podcast,
+                            inputs=[tb_podcast_link],
+                            outputs=[input_file, tb_podcast_status]
+                        )
+                        
+                        def _ai_post_process(files, manual_text, progress=gr.Progress()):
+                            txt_file = None
+                            original_text = ""
+
+                            # 1. 优先从生成的 .txt 文件中读取
+                            if files and len(files) > 0:
+                                for f in files:
+                                    # f 可能是字符串路径，也可能是 gradio.File 对象
+                                    f_path = f.name if hasattr(f, "name") else str(f)
+                                    if f_path.endswith(".txt"):
+                                        txt_file = f_path
+                                        break
+                                
+                                if txt_file and os.path.exists(txt_file):
+                                    with open(txt_file, "r", encoding="utf-8") as rf:
+                                        original_text = rf.read()
+                            
+                            # 2. 如果没有文件，尝试从“输出”文本框读取手动输入的内容
+                            if not original_text and manual_text and manual_text.strip():
+                                if len(manual_text.strip()) < 10:
+                                    return "手动输入内容太短，请粘贴完整的转录文本。", gr.update(), None
+                                
+                                original_text = manual_text
+                                txt_file = os.path.join(CUSTOM_TEMP_DIR, "manual_input.txt")
+                                with open(txt_file, "w", encoding="utf-8") as wf:
+                                    wf.write(manual_text)
+
+                            if not original_text:
+                                return "未找到转录文件或手动输入内容，请先运行生成或在『输出』框粘贴文本。", gr.update(), None
+                            
+                            llm_config = self.default_params.get("llm_post_process", {})
+                            processor = LLMProcessor(
+                                api_base=llm_config.get("api_base"),
+                                api_key=llm_config.get("api_key"),
+                                model=llm_config.get("model"),
+                                prompt=llm_config.get("prompt"),
+                                reasoning=llm_config.get("reasoning", False)
+                            )
+                            
+                            refined_text = processor.process_text(original_text, progress_callback=progress)
+                            if not refined_text or refined_text.startswith("Error:"):
+                                return format_refined_text_to_html(refined_text if refined_text else "AI 整理失败，请检查 API 配置。"), None
+                            
+                            # 1. 保存原始 TXT
+                            txt_path = processor.save_refined_text(txt_file, refined_text)
+                            
+                            # 2. 生成并保存美化版 HTML
+                            html_content = format_refined_text_to_html(refined_text)
+                            html_path = processor.save_refined_html(txt_file, html_content, CSS)
+                            
+                            # 3. 直接生成并保存 PDF 文件
+                            pdf_path = processor.save_refined_pdf(txt_file, refined_text)
+                            
+                            download_files = [txt_path, html_path]
+                            if pdf_path:
+                                download_files.append(pdf_path)
+                            
+                            return html_content, download_files
+
+                        btn_ai_refine.click(
+                            fn=_ai_post_process,
+                            inputs=[files_subtitles, tb_indicator],
+                            outputs=[tb_ai_refined_preview, file_ai_refined]
+                        )
 
                     with gr.TabItem(_("Youtube")):  # tab2
                         with gr.Row():
@@ -302,6 +567,43 @@ class App:
                                                      fn=lambda: self.open_folder(os.path.join(
                                                          self.args.output_dir, "UVR", "vocals"
                                                      )))
+
+                    with gr.TabItem("LLM Settings"):
+                        llm_params = self.default_params.get("llm_post_process", {})
+                        with gr.Column():
+                            gr.Markdown("### 🤖 LLM 自动化洗稿配置 (OpenAI 兼容)")
+                            tb_ai_base = gr.Textbox(label="API Base URL", value=llm_params.get("api_base"), placeholder="https://api.openai.com/v1")
+                            tb_ai_key = gr.Textbox(label="API Key", value=llm_params.get("api_key"), type="password")
+                            tb_ai_model = gr.Textbox(label="LLM Model", value=llm_params.get("model"), placeholder="gpt-3.5-turbo")
+                            cb_ai_reasoning = gr.Checkbox(label="开启深度思考 (Reasoning)", value=llm_params.get("reasoning", False), info="开启后将尝试引导模型进行深度推理（需模型支持）")
+                            tb_ai_prompt = gr.Textbox(label="AI Prompt", value=llm_params.get("prompt"), lines=5)
+                            btn_save_llm = gr.Button("💾 保存配置", variant="primary")
+                            tb_save_status = gr.Textbox(label="状态", interactive=False)
+
+                        def _save_llm_config(base, key, model, prompt, reasoning):
+                            self.default_params["llm_post_process"] = {
+                                "api_base": base,
+                                "api_key": key,
+                                "model": model,
+                                "prompt": prompt,
+                                "reasoning": reasoning
+                            }
+                            with open(DEFAULT_PARAMETERS_CONFIG_PATH, "w", encoding="utf-8") as wf:
+                                yaml.dump(self.default_params, wf, allow_unicode=True)
+                            return "✅ 配置已保存到 configs/default_parameters.yaml"
+
+                        btn_save_llm.click(
+                            fn=_save_llm_config,
+                            inputs=[tb_ai_base, tb_ai_key, tb_ai_model, tb_ai_prompt, cb_ai_reasoning],
+                            outputs=[tb_save_status]
+                        )
+                        
+                        # 底部清理按钮
+                        with gr.Row():
+                            btn_clean_temp = gr.Button("🧹 一键清理音频缓存", variant="secondary", size="sm")
+                        
+                        btn_clean_temp.click(fn=lambda: gr.Info(clean_temp_dir()), outputs=None)
+                
 
         # Launch the app with optional gradio settings
         args = self.args

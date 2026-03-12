@@ -194,8 +194,12 @@ class BaseTranscriptionPipeline(ABC):
                 audio=origin_audio,
                 use_auth_token=diarization_params.hf_token if diarization_params.hf_token else os.environ.get("HF_TOKEN"),
                 transcribed_result=result,
-                device=diarization_params.diarization_device
+                device=diarization_params.diarization_device,
+                min_speakers=diarization_params.min_speakers,
+                max_speakers=diarization_params.max_speakers
             )
+            # 播客深度优化：同说话人片段合并逻辑
+            result = self.merge_segments_by_speaker(result)
             if diarization_params.enable_offload:
                 self.diarizer.offload()
 
@@ -574,6 +578,13 @@ class BaseTranscriptionPipeline(ABC):
             params.whisper.language_detection_threshold = None
         if params.vad.max_speech_duration_s == GRADIO_NONE_NUMBER_MAX:
             params.vad.max_speech_duration_s = float('inf')
+        
+        # Diarization 参数归一化
+        if params.diarization.min_speakers == GRADIO_NONE_NUMBER_MIN:
+            params.diarization.min_speakers = None
+        if params.diarization.max_speakers == GRADIO_NONE_NUMBER_MIN:
+            params.diarization.max_speakers = None
+
         return params
 
     @staticmethod
@@ -605,6 +616,50 @@ class BaseTranscriptionPipeline(ABC):
 
         if cached_yaml is not None and cached_yaml:
             save_yaml(cached_yaml, DEFAULT_PARAMETERS_CONFIG_PATH)
+
+    def merge_segments_by_speaker(self, segments: List[Segment], max_gap=2.0, max_len=30.0) -> List[Segment]:
+        """
+        播客优化：将相同说话人的细碎片段合并为整段。
+        :param segments: 原始片段列表 (含 Speaker| 前缀)
+        :param max_gap: 允许合并的最大静音间隔 (秒)
+        :param max_len: 合并后的单段最大时长 (秒)
+        """
+        if not segments or len(segments) < 2:
+            return segments
+
+        merged = []
+        curr = None
+
+        for seg in segments:
+            if curr is None:
+                curr = deepcopy(seg)
+                continue
+
+            # 拆分 Speaker 和文本
+            curr_parts = curr.text.split("|", 1)
+            seg_parts = seg.text.split("|", 1)
+
+            if len(curr_parts) == 2 and len(seg_parts) == 2:
+                curr_spk, curr_txt = curr_parts
+                seg_spk, seg_txt = seg_parts
+
+                gap = seg.start - curr.end
+                total_duration = seg.end - curr.start
+
+                # 合并条件：同一人、间隔短、总长未超标
+                if curr_spk == seg_spk and gap <= max_gap and total_duration <= max_len:
+                    curr.text = f"{curr_spk}|{curr_txt.strip()} {seg_txt.strip()}"
+                    curr.end = seg.end
+                    if curr.words and seg.words:
+                        curr.words.extend(seg.words)
+                    continue
+
+            merged.append(curr)
+            curr = deepcopy(seg)
+
+        if curr:
+            merged.append(curr)
+        return merged
 
     @staticmethod
     def resample_audio(audio: Union[str, np.ndarray],

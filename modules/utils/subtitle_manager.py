@@ -103,7 +103,11 @@ class WriteTXT(ResultWriter):
         self, result: Union[Dict, List[Segment]], file: TextIO, options: Optional[dict] = None, **kwargs
     ):
         for segment in result["segments"]:
-            print(segment["text"].strip(), file=file, flush=True)
+            # 防护：segment["text"] 可能为 None（上游转写失败），以空字符串代替避免 AttributeError
+            text = segment.get("text") if isinstance(segment, dict) else getattr(segment, 'text', None)
+            if text is None:
+                text = ""
+            print(text.strip(), file=file, flush=True)
 
     def to_segments(self, file_path: str):
         segments = []
@@ -430,6 +434,8 @@ def generate_file(
     if add_timestamp:
         timestamp = datetime.now().strftime("%m%d%H%M%S")
         output_file_name += f"-{timestamp}"
+    # Ensure output directory exists to avoid FileNotFoundError when writers open files
+    os.makedirs(output_dir, exist_ok=True)
 
     file_path = os.path.join(output_dir, f"{output_file_name}.{output_format}")
     file_writer = get_writer(output_format=output_format, output_dir=output_dir)

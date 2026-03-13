@@ -117,12 +117,97 @@ class BaseTranscriptionPipeline(ABC):
         """
         start_time = time.time()
 
+        # Wrap the provided progress callback so console also shows a simple progress bar.
+        def _make_progress_proxy(orig_progress):
+            def _proxy(value, desc=None):
+                try:
+                    if desc is None:
+                        orig_progress(value)
+                    else:
+                        orig_progress(value, desc=desc)
+                except Exception:
+                    pass
+
+                try:
+                    if isinstance(value, float):
+                        percent = int(max(0, min(1, value)) * 100)
+                    else:
+                        try:
+                            percent = int(value)
+                        except Exception:
+                            percent = 0
+                    bar_len = 30
+                    filled = int(bar_len * percent / 100)
+                    bar = '[' + '=' * filled + ' ' * (bar_len - filled) + ']'
+                    out = f"{bar} {percent}%" if not desc else f"{bar} {percent}% {desc}"
+                    print('\r' + out, end='', flush=True)
+                    if percent >= 100:
+                        print('')
+                except Exception:
+                    pass
+
+            return _proxy
+
+        progress = _make_progress_proxy(progress)
+
         if not validate_audio(audio):
             return [Segment()], 0
 
         params = TranscriptionPipelineParams.from_list(list(pipeline_params))
         params = self.validate_gradio_values(params)
         bgm_params, vad_params, whisper_params, diarization_params = params.bgm_separation, params.vad, params.whisper, params.diarization
+
+        # Print compact two-line config log (数值/超参行 + 功能开关行) and a short explanation line
+        try:
+            line1_parts = [
+                f"MODEL={whisper_params.model_size}",
+                f"BEAM SIZE(质量↑↓)={whisper_params.beam_size}",
+                f"BATCH SIZE(吞吐↑↓)={whisper_params.batch_size}",
+                f"COMPUTE(精度/速度/显存)={whisper_params.compute_type}",
+                f"DEVICE={self.device}",
+                f"FORMAT={file_format}",
+                f"TIMESTAMP={'ON' if add_timestamp else 'OFF'}",
+            ]
+            line1 = ' | '.join(line1_parts)
+
+            offload_any = '是' if (getattr(whisper_params, 'enable_offload', False) or getattr(bgm_params, 'enable_offload', False) or getattr(diarization_params, 'enable_offload', False)) else '否'
+
+            line2_parts = [
+                f"翻译={'√' if getattr(whisper_params, 'is_translate', False) else '×'}",
+                f"词级时间戳={'√' if getattr(whisper_params, 'word_timestamps', False) else '×'}",
+                f"语音检测(VAD)={'√' if getattr(vad_params, 'vad_filter', False) else '×'}" + (f"(阈值={getattr(vad_params,'threshold',None)})" if getattr(vad_params, 'vad_filter', False) else ''),
+                f"去背景音乐={'√' if getattr(bgm_params, 'is_separate_bgm', False) else '×'}" + (f"(模型={getattr(bgm_params,'uvr_model_size',None)})" if getattr(bgm_params, 'is_separate_bgm', False) else ''),
+                f"分说话人={'√' if getattr(diarization_params, 'is_diarize', False) else '×'}" + (f"(min={getattr(diarization_params,'min_speakers',None)},max={getattr(diarization_params,'max_speakers',None)})" if getattr(diarization_params, 'is_diarize', False) else ''),
+                f"保存分离音轨={'是' if getattr(bgm_params, 'save_file', False) else '否'}",
+                f"模型卸载={offload_any}",
+            ]
+
+            descs = [
+                "BEAM SIZE（精度）: 值越大，识别精度提升，但处理时间会成倍增加。建议：1~4。",
+                "BATCH SIZE（速度）: 值越大，耗时减少，但显存占用也会随之上升。建议：1~4",
+                "COMPUTE（精度/速度/显存）: 建议： int8_float16。", 
+"DEVICE: cuda（GPU）利用 1660 Ti 硬件加速，转录速度显著快于 cpu。",
+"FORMAT: 输出字幕格式（SRT / WebVTT / txt / LRC），建议选 txt 以方便后续 AI 润色。",
+"TIMESTAMP: 是否在输出文件名中加入时间戳，方便管理不同批次的转录稿。"
+            ]
+
+            # Print a clearer, multi-line configuration block
+            logger.info("===== 参数设置 =====")
+            # numeric / hyper-parameters (one per line)
+            for part in line1_parts:
+                logger.info(part)
+
+            logger.info("===== 功能设置 =====")
+            # feature toggles (one per line)
+            for part in line2_parts:
+                logger.info(part)
+
+            logger.info("===== 参数说明 =====")
+            for desc in descs:
+                logger.info(f"- {desc}")
+        except Exception:
+            # defensive: logging failure must not break the pipeline
+            pass
 
         if bgm_params.is_separate_bgm:
             music, audio, _ = self.music_separator.separate(
@@ -284,6 +369,7 @@ class BaseTranscriptionPipeline(ABC):
                 )
 
                 file_name, file_ext = os.path.splitext(os.path.basename(file))
+                # If user asked to save in same dir, keep that behavior
                 if save_same_dir and input_folder_path:
                     output_dir = os.path.dirname(file)
                     subtitle, file_path = generate_file(
@@ -294,15 +380,23 @@ class BaseTranscriptionPipeline(ABC):
                         add_timestamp=add_timestamp,
                         **writer_options
                     )
-
-                subtitle, file_path = generate_file(
-                    output_dir=self.output_dir,
-                    output_file_name=file_name,
-                    output_format=file_format,
-                    result=transcribed_segments,
-                    add_timestamp=add_timestamp,
-                    **writer_options
-                )
+                else:
+                    # Default: save under outputs/<clean_name>/ where clean_name strips podcast_tmp_
+                    clean_name = file_name.replace('podcast_tmp_', '')
+                    # sanitize filename
+                    try:
+                        clean_name = safe_filename(clean_name)
+                    except Exception:
+                        pass
+                    output_dir = os.path.join(self.output_dir, clean_name)
+                    subtitle, file_path = generate_file(
+                        output_dir=output_dir,
+                        output_file_name=clean_name,
+                        output_format=file_format,
+                        result=transcribed_segments,
+                        add_timestamp=add_timestamp,
+                        **writer_options
+                    )
                 files_info[file_name] = {"subtitle": read_file(file_path), "time_for_task": time_for_task, "path": file_path}
 
             total_result = ''
@@ -315,6 +409,13 @@ class BaseTranscriptionPipeline(ABC):
 
             result_str = f"Done in {self.format_time(total_time)}! Subtitle is in the outputs folder.\n\n{total_result}"
             result_file_path = [info['path'] for info in files_info.values()]
+
+            # Log completion and elapsed time to console for clarity
+            try:
+                logger.info(f"Transcription completed in {self.format_time(total_time)} for files: {result_file_path}")
+            except Exception:
+                # Ensure that logging failure does not break the return
+                pass
 
             return result_str, result_file_path
 

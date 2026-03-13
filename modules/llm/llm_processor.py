@@ -208,8 +208,12 @@ class LLMProcessor:
         """
         将润色后的文本保存为新文件。
         """
-        base, ext = os.path.splitext(original_path)
-        new_path = f"{base}_AI_Refined.txt"
+        # 保存到 outputs/<original_name_without_prefix>/
+        base_name = os.path.splitext(os.path.basename(original_path))[0]
+        clean_name = base_name.replace('podcast_tmp_', '')
+        out_dir = os.path.join(os.getcwd(), 'outputs', clean_name)
+        os.makedirs(out_dir, exist_ok=True)
+        new_path = os.path.join(out_dir, f"{clean_name}_AI_Refined.txt")
         with open(new_path, "w", encoding="utf-8") as f:
             f.write(refined_text)
         return new_path
@@ -219,8 +223,12 @@ class LLMProcessor:
         """
         将润色后的美化 HTML 保存为文件。
         """
-        base, ext = os.path.splitext(original_path)
-        new_path = f"{base}_AI_Refined_Pretty.html"
+        # 保存到 outputs/<original_name_without_prefix>/
+        base_name = os.path.splitext(os.path.basename(original_path))[0]
+        clean_name = base_name.replace('podcast_tmp_', '')
+        out_dir = os.path.join(os.getcwd(), 'outputs', clean_name)
+        os.makedirs(out_dir, exist_ok=True)
+        new_path = os.path.join(out_dir, f"{clean_name}_AI_Refined_Pretty.html")
         
         full_html = f"""
 <!DOCTYPE html>
@@ -264,61 +272,84 @@ class LLMProcessor:
             
             logger.info("开始生成 PDF 文件...")
 
-            base, ext = os.path.splitext(original_path)
-            new_path = f"{base}_AI_Refined.pdf"
+            # 保存到 outputs/<original_name_without_prefix>/
+            base_name = os.path.splitext(os.path.basename(original_path))[0]
+            clean_name = base_name.replace('podcast_tmp_', '')
+            out_dir = os.path.join(os.getcwd(), 'outputs', clean_name)
+            os.makedirs(out_dir, exist_ok=True)
+            new_path = os.path.join(out_dir, f"{clean_name}_AI_Refined.pdf")
 
             # 字体路径
             resources_dir = os.path.join(os.getcwd(), "resources", "fonts")
             barlow_font_path = os.path.join(resources_dir, "Barlow-Regular.ttf")
             noto_font_path = os.path.join(resources_dir, "NotoSansSC-Regular.ttf")
             
-            # 1. 注册 Barlow (英文)
+            # 1. 尝试注册字体：Barlow（英文）与 NotoSansSC（中文回退）
             font_barlow = "Barlow"
+            font_noto = "NotoSansSC"
+
+            # 注册 Barlow
             if os.path.exists(barlow_font_path):
-                pdfmetrics.registerFont(TTFont(font_barlow, barlow_font_path))
-                addMapping(font_barlow, 0, 0, font_barlow) # normal
-                addMapping(font_barlow, 1, 0, font_barlow) # bold
+                try:
+                    pdfmetrics.registerFont(TTFont(font_barlow, barlow_font_path))
+                    addMapping(font_barlow, 0, 0, font_barlow)  # normal
+                    addMapping(font_barlow, 1, 0, font_barlow)  # bold
+                    logger.info(f"成功注册字体: {font_barlow}")
+                except Exception as fe:
+                    logger.error(f"Barlow 注册失败: {fe}")
+                    font_barlow = "Helvetica"
             else:
+                logger.error(f"未找到 Barlow 字体文件: {barlow_font_path}，将使用系统默认字体")
                 font_barlow = "Helvetica"
 
-            # 2. 注册 Noto Sans SC (中文) - 核心修复点
-            font_noto = "NotoSansSC"
+            # 注册 Noto (中文字体) 如果存在
+            noto_available = False
             if os.path.exists(noto_font_path):
                 try:
-                    # 注册为 Unicode 字体
                     pdfmetrics.registerFont(TTFont(font_noto, noto_font_path))
-                    # 建立样式映射
-                    addMapping(font_noto, 0, 0, font_noto) # normal
-                    addMapping(font_noto, 1, 0, font_noto) # bold
-                    logger.info(f"成功注册中文字体: {font_noto}")
-                except Exception as fe:
-                    logger.error(f"NotoSansSC 注册失败，尝试回退到系统字体: {fe}")
-                    # 如果本地下载的字体损坏，回退到系统自带的微软雅黑
-                    sys_font = "C:/Windows/Fonts/msyh.ttc"
-                    if os.path.exists(sys_font):
-                        pdfmetrics.registerFont(TTFont(font_noto, sys_font, subfontIndex=0))
-                        logger.info(f"成功回退并注册系统字体: {sys_font}")
-                    else:
-                        return None
+                    addMapping(font_noto, 0, 0, font_noto)
+                    addMapping(font_noto, 1, 0, font_noto)
+                    noto_available = True
+                    logger.info(f"成功注册中文回退字体: {font_noto}")
+                except Exception as ne:
+                    logger.error(f"Noto 注册失败: {ne}")
+                    noto_available = False
             else:
-                logger.error("未找到 NotoSansSC 字体文件，PDF 中文将无法显示。")
-                return None
+                logger.warning(f"未找到 Noto 中文字体文件: {noto_font_path}，中文可能无法正确显示")
 
             # 准备 PDF 专用的 HTML (xhtml2pdf 特殊语法)
             colors = ["#f87171", "#fbbf24", "#34d399", "#60a5fa", "#a78bfa", "#f472b6"]
             
-            # 使用 <style> 中的 pdf-font 属性强制指定字体
+            # 使用 <style> 中的 @font-face 明确指定字体路径，并在 body 中使用合适字体
+            # xhtml2pdf 在某些系统下需要通过 @font-face 指定本地字体文件路径以确保嵌入
+            # 使用 file:// 绝对路径确保 pisa 能找到字体文件
+            barlow_abs = barlow_font_path.replace('\\', '/')
+            noto_abs = noto_font_path.replace('\\', '/')
+
+
+            # 优先使用 Barlow；将 Noto 放在回退列表以确保中文能显示
+            preferred_font = font_barlow
+
             html_content = f"""
             <html>
             <head>
                 <meta charset="UTF-8">
                 <style>
+                    @font-face {{
+                        font-family: 'Barlow';
+                        src: url('file:///{barlow_abs}');
+                    }}
+                    @font-face {{
+                        font-family: 'NotoSansSC';
+                        src: url('file:///{noto_abs}');
+                    }}
                     @page {{
                         size: a4;
                         margin: 2cm;
                     }}
                     body {{ 
-                        font-family: "{font_noto}", "{font_barlow}";
+                        /* 优先 Barlow，回退到 NotoSansSC（中文）或系统字体 */
+                        font-family: 'Barlow', 'NotoSansSC', sans-serif;
                         font-size: 11pt;
                         line-height: 1.6;
                         color: #1f2937;
@@ -346,14 +377,14 @@ class LLMProcessor:
                         padding-left: 15px;
                     }}
                     .speaker-header {{
-                        font-family: "{font_barlow}", "{font_noto}";
+                        font-family: 'Barlow';
                         font-weight: bold;
                         color: #4b5563;
                         font-size: 10pt;
                         margin-bottom: 4px;
                     }}
                     .text {{
-                        font-family: "{font_noto}", "{font_barlow}";
+                        font-family: 'Barlow';
                         font-size: 11pt;
                         color: #111827;
                     }}

@@ -388,15 +388,45 @@ class App:
                             if not refined_text or refined_text.startswith("Error:"):
                                 return format_refined_text_to_html(refined_text if refined_text else "AI 整理失败，请检查 API 配置。"), None
                             
-                            # 1. 保存原始 TXT
-                            txt_path = processor.save_refined_text(txt_file, refined_text)
-                            
+                            # Determine the media file to use for naming (prefer original MP3 when available)
+                            media_for_naming = txt_file
+                            try:
+                                # candidate: same base name with .mp3
+                                candidate_mp3 = os.path.splitext(txt_file)[0] + '.mp3'
+                                if os.path.exists(candidate_mp3):
+                                    media_for_naming = candidate_mp3
+                                else:
+                                    # search same directory for mp3s that contain the cleaned base name
+                                    tdir = os.path.dirname(txt_file)
+                                    cleaned = os.path.splitext(os.path.basename(txt_file))[0].replace('podcast_tmp_', '')
+                                    mp3_matches = []
+                                    if os.path.isdir(tdir):
+                                        for fname in os.listdir(tdir):
+                                            if fname.lower().endswith('.mp3') and cleaned in fname:
+                                                mp3_matches.append(os.path.join(tdir, fname))
+                                    if mp3_matches:
+                                        media_for_naming = mp3_matches[0]
+                                    else:
+                                        # fallback: check the uploaded files list for an mp3
+                                        if files:
+                                            for f in files:
+                                                f_path = f.name if hasattr(f, 'name') else str(f)
+                                                if f_path.lower().endswith('.mp3'):
+                                                    media_for_naming = f_path
+                                                    break
+                            except Exception:
+                                # defensive: keep txt_file if anything goes wrong
+                                media_for_naming = txt_file
+
+                            # 1. 保存原始 TXT (use media_for_naming for folder naming)
+                            txt_path = processor.save_refined_text(media_for_naming, refined_text)
+
                             # 2. 生成并保存美化版 HTML
                             html_content = format_refined_text_to_html(refined_text)
-                            html_path = processor.save_refined_html(txt_file, html_content, CSS)
-                            
+                            html_path = processor.save_refined_html(media_for_naming, html_content, CSS)
+
                             # 3. 直接生成并保存 PDF 文件
-                            pdf_path = processor.save_refined_pdf(txt_file, refined_text)
+                            pdf_path = processor.save_refined_pdf(media_for_naming, refined_text)
                             
                             download_files = [txt_path, html_path]
                             if pdf_path:

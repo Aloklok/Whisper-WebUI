@@ -3,13 +3,8 @@ CSS = """
     font-family: 'Barlow';
     src: url('file/resources/fonts/Barlow-Regular.ttf') format('truetype');
 }
-@font-face {
-    font-family: 'Noto Sans SC';
-    src: url('file/resources/fonts/NotoSansSC-Regular.ttf') format('truetype');
-}
-
 body, .gradio-container, * {
-    font-family: 'Barlow', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+  font-family: 'Barlow', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
 }
 
 .bmc-button {

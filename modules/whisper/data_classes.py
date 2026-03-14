@@ -250,12 +250,6 @@ class DiarizationParams(BaseParams):
                 precision=0,
                 info=_("Maximum number of speakers. (Optional)")
             )
-            ,
-            gr.Checkbox(
-                label=_("自动 AI 润色（生成后自动运行 LLM 并保存结果）"),
-                value=defaults.get("auto_llm_refine", cls.__fields__["auto_llm_refine"].default),
-                info=_("如果启用，系统将在字幕生成完成后自动调用 LLM 进行润色并保存 TXT/HTML/PDF 到 outputs/<文件名>/ 中。"),
-            )
         ]
 
 

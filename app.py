@@ -216,12 +216,14 @@ class App:
                                        interactive=True)
 
         def get_status_text(is_enabled):
-            return _(" (Enabled)") if is_enabled else _(" (Disabled)")
+            status_cls = "status-on" if is_enabled else "status-off"
+            status_label = _("ON") if is_enabled else _("OFF")
+            return f'<span class="status-pill {status_cls}">{status_label}</span>'
 
         def update_acc_status(is_enabled, label_prefix, base_id):
-            status = get_status_text(is_enabled)
-            new_id = f"{base_id}_on" if is_enabled else f"{base_id}_off"
-            return gr.update(label=f"{label_prefix}{status}", elem_id=new_id)
+            status_html = get_status_text(is_enabled)
+            # 这里的 label 可以包含 HTML，Gradio Accordion 支持简单 HTML 或我们在 CSS 中处理
+            return gr.update(label=f"{label_prefix} {status_html}")
 
         with gr.Accordion(_("Advanced Parameters"), open=False, elem_id="acc_whisper_advanced"):
             whisper_inputs = WhisperParams.to_gradio_inputs(defaults=whisper_params, only_advanced=True,
@@ -231,9 +233,9 @@ class App:
 
         uvr_label = _("Background Music Remover Filter")
         uvr_id = "acc_uvr"
-        with gr.Accordion(f"{uvr_label}{get_status_text(uvr_params['is_separate_bgm'])}", 
+        with gr.Accordion(f"{uvr_label} {get_status_text(uvr_params['is_separate_bgm'])}", 
                           open=False, 
-                          elem_id=f"{uvr_id}_on" if uvr_params['is_separate_bgm'] else f"{uvr_id}_off") as acc_uvr:
+                          elem_id=uvr_id) as acc_uvr:
             uvr_inputs = BGMSeparationParams.to_gradio_input(defaults=uvr_params,
                                                              available_models=self.whisper_inf.music_separator.available_models,
                                                              available_devices=self.whisper_inf.music_separator.available_devices,
@@ -242,17 +244,17 @@ class App:
 
         vad_label = _("Voice Detection Filter")
         vad_id = "acc_vad"
-        with gr.Accordion(f"{vad_label}{get_status_text(vad_params['vad_filter'])}", 
+        with gr.Accordion(f"{vad_label} {get_status_text(vad_params['vad_filter'])}", 
                           open=False, 
-                          elem_id=f"{vad_id}_on" if vad_params['vad_filter'] else f"{vad_id}_off") as acc_vad:
+                          elem_id=vad_id) as acc_vad:
             vad_inputs = VadParams.to_gradio_inputs(defaults=vad_params)
         vad_inputs[0].change(fn=lambda x: update_acc_status(x, vad_label, vad_id), inputs=vad_inputs[0], outputs=acc_vad)
 
         diarization_label = _("Diarization")
         diar_id = "acc_diarization"
-        with gr.Accordion(f"{diarization_label}{get_status_text(diarization_params['is_diarize'])}", 
+        with gr.Accordion(f"{diarization_label} {get_status_text(diarization_params['is_diarize'])}", 
                           open=False, 
-                          elem_id=f"{diar_id}_on" if diarization_params['is_diarize'] else f"{diar_id}_off") as acc_diarization:
+                          elem_id=diar_id) as acc_diarization:
             diarization_inputs = DiarizationParams.to_gradio_inputs(defaults=diarization_params,
                                                                     available_devices=self.whisper_inf.diarizer.available_device,
                                                                     device=self.whisper_inf.diarizer.device)
@@ -283,22 +285,21 @@ class App:
                         gr.Markdown(MARKDOWN, elem_id="md_project")
                 with gr.Tabs():
                     with gr.TabItem(_("File")):  # tab1
-                        with gr.Accordion(_("Podcast Link (小宇宙)"), open=True):
+                        with gr.Group(): # 使用 Group 而非 Accordion 使其更紧凑
                             with gr.Row():
                                 tb_podcast_link = gr.Textbox(
-                                    label=None,
-                                    placeholder=_("Podcast URL"),
+                                    show_label=False,
+                                    placeholder=_("Podcast URL (Xiaoyuzhou etc.)"),
                                     scale=4
                                 )
                                 btn_download_podcast = gr.Button(_("Download"), scale=1, variant="secondary")
-                            tb_podcast_status = gr.Textbox(label=_("Status"), interactive=False, visible=False)
+                            tb_podcast_status = gr.Textbox(show_label=False, interactive=False, visible=False)
 
                         with gr.Accordion(_("Local Files"), open=False):
                             with gr.Column():
                                 input_file = gr.Files(type="filepath", label=_("Upload File here"), file_types=MEDIA_EXTENSION)
-                                tb_input_folder = gr.Textbox(label="Input Folder Path (Optional)",
-                                                             info="Optional: Specify the folder path where the input files are located, if you prefer to use local files instead of uploading them."
-                                                                  " Leave this field empty if you do not wish to use a local path.",
+                                tb_input_folder = gr.Textbox(show_label=True, label=_("Input Folder Path (Optional)"),
+                                                             info=_("Optional: Specify the folder path where the input files are located, if you prefer to use local files instead of uploading them. Leave this field empty if you do not wish to use a local path."),
                                                              visible=self.args.colab,
                                                              value="")
                                 cb_include_subdirectory = gr.Checkbox(label="Include Subdirectory Files",

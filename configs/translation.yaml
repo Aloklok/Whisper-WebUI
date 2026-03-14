@@ -443,6 +443,9 @@ zh:
   "AI post-processing failed, please check API configuration.": AI 整理失败，请检查 API 配置。
   "✨ AI Post-Processing (LLM Post-Processing)": "✨ AI 一键整理 (LLM Post-Processing)"
   "✨ AI One-Click Refine": "✨ AI 一键整理润色"
+  "ON": "开启"
+  "OFF": "关闭"
+  "Podcast URL (Xiaoyuzhou etc.)": "播客链接 (支持小宇宙、苹果播客等直接下载)"
 uk:
   Language: Мова
   Upload File here: Завантажте файл тут

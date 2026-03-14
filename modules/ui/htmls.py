@@ -44,60 +44,79 @@ body, .gradio-container, * {
   text-decoration: underline;
 }
 
-/* --- 新增：功能卡片标题着色 (状态联动版) --- */
-/* 高级选项 (始终蓝色) */
-#acc_whisper_advanced > div > summary,
-#acc_whisper_advanced .label-wrap {
-    background-color: #eff6ff !important;
-    color: #1e40af !important;
-    border-radius: 8px 8px 0 0;
+/* --- Minimal Premium UI 核心系统 --- */
+:root {
+    --primary-color: #2563eb;
+    --success-color: #10b981;
+    --gray-color: #94a3b8;
+    --border-color: #e2e8f0;
+    --bg-soft: #f8fafc;
 }
 
-/* 开启状态色彩 (On) */
-#acc_uvr_on > div > summary, #acc_uvr_on .label-wrap {
-    background-color: #eff6ff !important; /* 淡蓝 */
-    color: #1e40af !important;
-    border-radius: 8px 8px 0 0;
-}
-
-#acc_vad_on > div > summary, #acc_vad_on .label-wrap {
-    background-color: #f0fdf4 !important; /* 淡绿 */
-    color: #166534 !important;
-    border-radius: 8px 8px 0 0;
-}
-
-#acc_diarization_on > div > summary, #acc_diarization_on .label-wrap {
-    background-color: #f5f3ff !important; /* 淡紫 */
-    color: #5b21b6 !important;
-    border-radius: 8px 8px 0 0;
-}
-
-/* AI 整理区 (淡橙色) */
-#acc_ai_post_processing > div > summary, #acc_ai_post_processing .label-wrap {
-    background-color: #fff7ed !important; 
-    color: #9a3412 !important;
-    border-radius: 8px 8px 0 0;
-}
-
-/* 关闭状态色彩 (Off - 统一灰色) */
-#acc_uvr_off > div > summary, #acc_uvr_off .label-wrap,
-#acc_vad_off > div > summary, #acc_vad_off .label-wrap,
-#acc_diarization_off > div > summary, #acc_diarization_off .label-wrap {
-    background-color: #f3f4f6 !important; /* 浅灰 */
-    color: #6b7280 !important;
-    border-radius: 8px 8px 0 0;
-}
-
-/* 统一手风琴标题样式增强 */
+/* 统一手风琴标题样式：移除大面积背景，增加呼吸感 */
 summary {
-    font-weight: 700 !important;
-    padding: 10px 15px !important;
-    cursor: pointer;
-    transition: all 0.2s ease-in-out !important;
+    font-weight: 600 !important;
+    padding: 12px 16px !important;
+    color: #334155 !important;
+    background: white !important;
+    border-bottom: 1px solid transparent;
+    transition: all 0.2s ease;
+    display: flex !important;
+    align-items: center;
+    gap: 8px;
 }
+
 summary:hover {
-    filter: brightness(0.95);
+    background: var(--bg-soft) !important;
 }
+
+/* 状态灯 (Status Pillars) - 替代繁琐文字 */
+.status-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 10px;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    margin-left: auto; /* 置右 */
+}
+
+.status-on {
+    background-color: #dcfce7 !important;
+    color: #166534 !important;
+}
+
+.status-off {
+    background-color: #f1f5f9 !important;
+    color: #64748b !important;
+}
+
+/* 容器美化：轻边框、柔投影 */
+.gradio-container {
+    font-family: 'Inter', -apple-system, sans-serif !important;
+}
+
+.gr-box, .gr-panel {
+    border: 1px solid var(--border-color) !important;
+    border-radius: 12px !important;
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1) !important;
+}
+
+/* 移除输入框内部标签 (Gradio 默认 Textbox 标题) */
+.gr-textbox label {
+    display: none !important;
+}
+
+/* AI 整理区核心标识：微妙的左侧色条 */
+#acc_ai_post_processing {
+    border-left: 4px solid #f97316 !important;
+}
+
+#acc_whisper_advanced { border-left: 4px solid #3b82f6 !important; }
+#acc_uvr { border-left: 4px solid #8b5cf6 !important; }
+#acc_vad { border-left: 4px solid #10b981 !important; }
+#acc_diarization { border-left: 4px solid #f43f5e !important; }
 
 .transcript-container {
     padding: 30px;

@@ -72,6 +72,13 @@ body, .gradio-container, * {
     border-radius: 8px 8px 0 0;
 }
 
+/* AI 整理区 (淡橙色) */
+#acc_ai_post_processing > div > summary, #acc_ai_post_processing .label-wrap {
+    background-color: #fff7ed !important; 
+    color: #9a3412 !important;
+    border-radius: 8px 8px 0 0;
+}
+
 /* 关闭状态色彩 (Off - 统一灰色) */
 #acc_uvr_off > div > summary, #acc_uvr_off .label-wrap,
 #acc_vad_off > div > summary, #acc_vad_off .label-wrap,

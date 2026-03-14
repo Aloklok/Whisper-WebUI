@@ -371,6 +371,53 @@ nl:
   Vocals: Stemmen
   BGM Separation: BGM Separatie
 zh:
+  Language: 语言
+  Upload File here: 上传文件
+  Model: 模型选择
+  Automatic Detection: 自动检测语言
+  File Format: 字幕文件格式
+  Translate to English?: 将字幕翻译成英语
+  Add a timestamp to the end of the filename: 在文件名末尾加入时间戳
+  Offload sub model when finished: 完成后卸载子模型
+  Advanced Parameters: 高级参数
+  Enabling this will remove background music: 启用此功能将会在进行转录前去除背景音乐
+  Enable Background Music Remover Filter: 去除背景音乐
+  Device: 设备
+  Save separated files to output: 导出分离出的音频文件
+  Background Music Remover Filter: 背景音乐消除设置
+  Enable this to transcribe only detected voice: 启用此功能将仅转录检测到的语音部分
+  Enable Silero VAD Filter: 启用 Silero 语音活动检测 (VAD)
+  Voice Detection Filter: 话音检测设置
+  Enable Diarization: 进行说话人分离处理
+  This is only needed the first time you download the model: 当且仅当您首次下载模型时才需要在此输入令牌，如果您已有模型则无需输入。
+    要下载模型，您必须先在"https://huggingface.co/pyannote/speaker-diarization-3.1" 与 "https://huggingface.co/pyannote/segmentation-3.0"
+    上同意他们的使用条款。
+  HuggingFace Token: HuggingFace令牌
+  Diarization: 说话人分离设置
+  GENERATE SUBTITLE FILE: 生成字幕文件
+  Output: 输出
+  Downloadable output file: 生成的字幕文件
+  File: 文件
+  Youtube Link: Youtube视频链接
+  Youtube Thumbnail: Youtube视频封面
+  Youtube Title: Youtube视频标题
+  Youtube Description: Youtube视频简介
+  Youtube: Youtube
+  Record with Mic: 通过麦克风录制
+  Mic: 麦克风
+  Upload Subtitle Files to translate here: 上传待翻译的字幕文件
+  Your Auth Key (API KEY): 填写您的认证令牌(API KEY)
+  Source Language: 原语言
+  Target Language: 目标语言
+  Pro User?: 您是否为专业版用户？
+  TRANSLATE SUBTITLE FILE: 翻译字幕文件
+  DeepL API: DeepL API
+  NLLB: NLLB
+  T2T Translation: 文字翻译
+  Upload Audio Files to separate background music: 上传待分离背景音乐的音频文件
+  SEPARATE BACKGROUND MUSIC: 分离背景音乐与人声
+  Instrumental: 器乐声
+  Vocals: 人声
   BGM Separation: 背景音乐分离
   AI Post-Processing: AI 整理润色
   AI Refinement Preview: AI 整理预览

@@ -211,7 +211,6 @@ class App:
         with gr.Row():
             cb_translate = gr.Checkbox(value=whisper_params["is_translate"], label=_("Translate to English?"),
                                        interactive=True)
-        with gr.Row():
             cb_timestamp = gr.Checkbox(value=whisper_params["add_timestamp"],
                                        label=_("Add a timestamp to the end of the filename"),
                                        interactive=True)
@@ -287,8 +286,8 @@ class App:
                         with gr.Accordion(_("Podcast Link (小宇宙)"), open=True):
                             with gr.Row():
                                 tb_podcast_link = gr.Textbox(
-                                    label=_("Podcast URL"),
-                                    placeholder="https://www.xiaoyuzhoufm.com/episode/...",
+                                    label=None,
+                                    placeholder=_("Podcast URL"),
                                     scale=4
                                 )
                                 btn_download_podcast = gr.Button(_("Download"), scale=1, variant="secondary")
@@ -322,7 +321,7 @@ class App:
                             btn_openfolder = gr.Button('📂', scale=1)
 
                         # AI 洗稿/总结预览区
-                        with gr.Accordion(_("✨ AI 一键整理 (LLM Post-Processing)"), open=True):
+                        with gr.Accordion(_("✨ AI 一键整理 (LLM Post-Processing)"), open=True, elem_id="acc_ai_post_processing"):
                             with gr.Row():
                                 btn_ai_refine = gr.Button(_("✨ AI One-Click Refine"), variant="secondary")
                             

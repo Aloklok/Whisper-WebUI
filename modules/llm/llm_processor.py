@@ -146,6 +146,10 @@ class LLMProcessor:
             return "文本内容为空，无需处理。"
         
         num_chunks = len(chunks)
+        # 立即上报 0% 进度，消除视觉假死
+        if progress_callback is not None:
+            progress_callback(0, desc=f"AI 正在准备分段润色 (共 {num_chunks} 段)...")
+            
         logger.info(f"开始并行处理 AI 润色，共 {num_chunks} 段...")
         
         # 准备每一段的衔接背景 (前一段原文的最后 300 字)

@@ -299,7 +299,7 @@ class BaseTranscriptionPipeline(ABC):
             logger.info(f"Whisper did not detected any speech segments in the audio.")
             result = [Segment()]
 
-        progress(1.0, desc="Finished.")
+        progress(1.0, desc="Transcription complete. (转录已完成)")
         total_elapsed_time = time.time() - start_time
         return result, total_elapsed_time
 
@@ -427,6 +427,8 @@ class BaseTranscriptionPipeline(ABC):
                                 # 读取生成的字幕文本
                                 original_text = read_file(file_path)
                                 if original_text and len(original_text.strip()) > 10:
+                                    # 衔接进度：转录已完，AI 启动
+                                    progress(0.99, desc="正在准备并分发 AI 润色任务...")
                                     logger.info(f"正在对文件 ({len(original_text)} 字符) 进行 AI 后处理...")
                                     refined_text = processor.process_text(original_text, progress_callback=progress)
                                     

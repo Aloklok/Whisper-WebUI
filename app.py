@@ -447,7 +447,8 @@ class App:
 
                         btn_run.click(fn=_run_and_maybe_refine,
                                       inputs=params,
-                                      outputs=[tb_indicator, files_subtitles, tb_ai_refined_preview, file_ai_refined])
+                                      outputs=[tb_indicator, files_subtitles, tb_ai_refined_preview, file_ai_refined],
+                                      show_progress="minimal")
                         btn_openfolder.click(fn=lambda: self.open_folder("outputs"), inputs=None, outputs=None)
 
                         def _download_podcast(url):
@@ -462,7 +463,8 @@ class App:
                         btn_download_podcast.click(
                             fn=_download_podcast,
                             inputs=[tb_podcast_link],
-                            outputs=[input_file, tb_podcast_status]
+                            outputs=[input_file, tb_podcast_status],
+                            show_progress="minimal"
                         )
                         
                         def _ai_post_process(files, manual_text, progress=gr.Progress()):
@@ -579,7 +581,8 @@ class App:
                         btn_ai_refine.click(
                             fn=_ai_post_process,
                             inputs=[files_subtitles, tb_indicator],
-                            outputs=[tb_ai_refined_preview, file_ai_refined]
+                            outputs=[tb_ai_refined_preview, file_ai_refined],
+                            show_progress="minimal"
                         )
 
                     with gr.TabItem(_("Youtube")):  # tab2
@@ -605,7 +608,8 @@ class App:
 
                         btn_run.click(fn=self.whisper_inf.transcribe_youtube,
                                       inputs=params + pipeline_params,
-                                      outputs=[tb_indicator, files_subtitles])
+                                      outputs=[tb_indicator, files_subtitles],
+                                      show_progress="minimal")
                         tb_youtubelink.change(get_ytmetas, inputs=[tb_youtubelink],
                                               outputs=[img_thumbnail, tb_title, tb_description])
                         btn_openfolder.click(fn=lambda: self.open_folder("outputs"), inputs=None, outputs=None)
@@ -628,7 +632,8 @@ class App:
 
                         btn_run.click(fn=self.whisper_inf.transcribe_mic,
                                       inputs=params + pipeline_params,
-                                      outputs=[tb_indicator, files_subtitles])
+                                      outputs=[tb_indicator, files_subtitles],
+                                      show_progress="minimal")
                         btn_openfolder.click(fn=lambda: self.open_folder("outputs"), inputs=None, outputs=None)
 
                     with gr.TabItem(_("T2T Translation")):  # tab 4
@@ -663,7 +668,8 @@ class App:
                         btn_run.click(fn=self.deepl_api.translate_deepl,
                                       inputs=[tb_api_key, file_subs, dd_source_lang, dd_target_lang,
                                               cb_is_pro, cb_timestamp],
-                                      outputs=[tb_indicator, files_subtitles])
+                                      outputs=[tb_indicator, files_subtitles],
+                                      show_progress="minimal")
 
                         btn_openfolder.click(
                             fn=lambda: self.open_folder(os.path.join(self.args.output_dir, "translations")),
@@ -699,7 +705,8 @@ class App:
                         btn_run.click(fn=self.nllb_inf.translate_file,
                                       inputs=[file_subs, dd_model_size, dd_source_lang, dd_target_lang,
                                               nb_max_length, cb_timestamp],
-                                      outputs=[tb_indicator, files_subtitles])
+                                      outputs=[tb_indicator, files_subtitles],
+                                      show_progress="minimal")
 
                         btn_openfolder.click(
                             fn=lambda: self.open_folder(os.path.join(self.args.output_dir, "translations")),
@@ -728,7 +735,8 @@ class App:
                         btn_run.click(fn=self.whisper_inf.music_separator.separate_files,
                                       inputs=[files_audio, dd_uvr_model_size, dd_uvr_device, nb_uvr_segment_size,
                                               cb_uvr_save_file],
-                                      outputs=[ad_instrumental, ad_vocals])
+                                      outputs=[ad_instrumental, ad_vocals],
+                                      show_progress="minimal")
                         btn_open_instrumental_folder.click(inputs=None,
                                                            outputs=None,
                                                            fn=lambda: self.open_folder(os.path.join(

@@ -389,13 +389,11 @@ zh:
   Diarization: 说话人分离 (Diarization)
   Enable this to transcribe only detected voice: 启用此功能将仅转录检测到的语音部分
   Enable Silero VAD Filter: 启用 Silero 语音活动检测 (VAD)
-  Voice Detection Filter: 话音检测设置
   Enable Diarization: 进行说话人分离处理
   This is only needed the first time you download the model: 当且仅当您首次下载模型时才需要在此输入令牌，如果您已有模型则无需输入。
     要下载模型，您必须先在"https://huggingface.co/pyannote/speaker-diarization-3.1" 与 "https://huggingface.co/pyannote/segmentation-3.0"
     上同意他们的使用条款。
   HuggingFace Token: HuggingFace令牌
-  Diarization: 说话人分离设置
   GENERATE SUBTITLE FILE: 生成字幕文件
   Output: 输出
   Downloadable output file: 生成的字幕文件

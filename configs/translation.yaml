@@ -384,7 +384,9 @@ zh:
   Enable Background Music Remover Filter: 去除背景音乐
   Device: 设备
   Save separated files to output: 导出分离出的音频文件
-  Background Music Remover Filter: 背景音乐消除设置
+  Background Music Remover Filter: 背景音乐移除 (UVR)
+  Voice Detection Filter: 语音检测 (VAD)
+  Diarization: 说话人分离 (Diarization)
   Enable this to transcribe only detected voice: 启用此功能将仅转录检测到的语音部分
   Enable Silero VAD Filter: 启用 Silero 语音活动检测 (VAD)
   Voice Detection Filter: 话音检测设置
@@ -445,7 +447,7 @@ zh:
   "✨ AI One-Click Refine": "✨ AI 一键整理润色"
   "ON": "开启"
   "OFF": "关闭"
-  "Podcast URL (Xiaoyuzhou etc.)": "播客链接 (支持小宇宙、苹果播客等直接下载)"
+  "Podcast URL (Xiaoyuzhou etc.)": "音频链接 (支持小宇宙、播客 URL 等)"
 uk:
   Language: Мова
   Upload File here: Завантажте файл тут

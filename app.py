@@ -190,8 +190,57 @@ class App:
         self.deepl_api = DeepLAPI(
             output_dir=os.path.join(self.args.output_dir, "translations")
         )
+        # 定义系统的硬编码兜底参数，防止 configs/default_parameters.yaml 缺失导致功能瘫痪
+        self.hardcoded_defaults = {
+            "whisper": {
+                "model_size": "large-v3-turbo", "lang": AUTOMATIC_DETECTION.unwrap(), "is_translate": False,
+                "beam_size": 5, "log_prob_threshold": -1.0, "no_speech_threshold": 0.6, "compute_type": "int8",
+                "best_of": 5, "patience": 1.0, "condition_on_previous_text": True, "prompt_reset_on_temperature": 0.5,
+                "initial_prompt": None, "temperature": 0.0, "compression_ratio_threshold": 2.4, "length_penalty": 1.0,
+                "repetition_penalty": 1.0, "no_repeat_ngram_size": 0, "prefix": None, "suppress_blank": True,
+                "suppress_tokens": [-1], "max_initial_timestamp": 1.0, "word_timestamps": False,
+                "prepend_punctuations": "\"'“¿([{-", "append_punctuations": "\"' .。,，! ！? ？: ：”)]}、",
+                "max_new_tokens": None, "chunk_length": 30, "hallucination_silence_threshold": None,
+                "hotwords": None, "language_detection_threshold": 0.5, "language_detection_segments": 1,
+                "batch_size": 24, "enable_offload": True, "add_timestamp": True, "file_format": "SRT"
+            },
+            "vad": {
+                "vad_filter": False, "threshold": 0.5, "min_speech_duration_ms": 250,
+                "max_speech_duration_s": float('inf'), "min_silence_duration_ms": 2000, "speech_pad_ms": 400
+            },
+            "diarization": {
+                "is_diarize": False, "diarization_device": "cuda", "hf_token": "", 
+                "enable_offload": True, "min_speakers": None, "max_speakers": None, "auto_llm_refine": False
+            },
+            "bgm_separation": {
+                "is_separate_bgm": False, "uvr_model_size": "UVR-MDX-NET-Inst_HQ_4", "uvr_device": "cuda",
+                "segment_size": 256, "save_file": False, "enable_offload": True
+            },
+            "translation": {
+                "deepl": {"api_key": "", "source_lang": "ZH", "target_lang": "EN", "is_pro": False},
+                "nllb": {"model_name": "facebook/nllb-200-distilled-600M", "source_lang": "Chinese (Simplified)", "target_lang": "English", "device": "cuda"},
+                "add_timestamp": True
+            },
+            "llm_post_process": {
+                "api_base": "https://api.siliconflow.cn/v1",
+                "api_key": "",
+                "model": "deepseek-ai/DeepSeek-V3",
+                "reasoning": False,
+                "prompt": "你是一位专业的播客文字编辑。请对以下转录文本进行整理和润色，要求：\n1. 修正明显的同音错别字和语法错误。\n2. 去除冗余的口头禅（如“那个”、“然后”、“就是”等）但保持口语化的自然流感。\n3. **必须保留**原始文本中的 SPEAKER_XX| 标签，不要删除或修改它们。\n4. 使用分段和核心点提炼，让长对谈更易于阅读。\n5. 直接输出润色后的结果，不要任何开场白。"
+            }
+        }
+        
+        # 加载外部配置并合并
+        user_config = load_yaml(DEFAULT_PARAMETERS_CONFIG_PATH)
+        # 深度合并 logic (简单层级合并)
+        self.default_params = deepcopy(self.hardcoded_defaults)
+        for section, params in user_config.items():
+            if section in self.default_params and isinstance(params, dict):
+                self.default_params[section].update(params)
+            else:
+                self.default_params[section] = params
+                
         self.i18n = load_yaml(I18N_YAML_PATH)
-        self.default_params = load_yaml(DEFAULT_PARAMETERS_CONFIG_PATH)
         logger.info(f"Use \"{self.args.whisper_type}\" implementation\n"
                     f"Device \"{self.whisper_inf.device}\" is detected")
 

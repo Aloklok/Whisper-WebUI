@@ -401,65 +401,59 @@ class BaseTranscriptionPipeline(ABC):
                     # Collect downloadable files (subtitle always first)
                     download_list = [file_path]
                     # 如果配置了 Diarization.auto_llm_refine，则在此处自动调用 LLM 进行润色并保存结果
-                    try:
-                        if getattr(params.diarization, 'auto_llm_refine', False):
-                            try:
-                                llm_config = load_yaml(DEFAULT_PARAMETERS_CONFIG_PATH).get('llm_post_process', {})
-                            except Exception:
-                                llm_config = {}
+                    if getattr(params.diarization, 'auto_llm_refine', False):
+                        logger.info(f"✨ 检测到自动 AI 润色已开启，准备对 {file_name} 进行后续处理...")
+                        try:
+                            # 优先从全局缓存读取
+                            cached_config = load_yaml(DEFAULT_PARAMETERS_CONFIG_PATH)
+                            llm_config = cached_config.get('llm_post_process', {})
+                            
+                            # 获取 API 配置
+                            api_base = llm_config.get('api_base')
+                            api_key = llm_config.get('api_key')
+                            model = llm_config.get('model')
+                            
+                            if not api_key:
+                                logger.warning("⚠️ AI 润色未触发：未检测到 llm_post_process.api_key。请在『高级设置 -> LLM Settings』中配置。")
+                            else:
+                                processor = LLMProcessor(
+                                    api_base=api_base,
+                                    api_key=api_key,
+                                    model=model,
+                                    prompt=llm_config.get('prompt'),
+                                    reasoning=llm_config.get('reasoning', False)
+                                )
 
-                            processor = LLMProcessor(
-                                api_base=llm_config.get('api_base'),
-                                api_key=llm_config.get('api_key'),
-                                model=llm_config.get('model'),
-                                prompt=llm_config.get('prompt'),
-                                reasoning=llm_config.get('reasoning', False)
-                            )
-
-                            # read generated subtitle text
-                            try:
+                                # 读取生成的字幕文本
                                 original_text = read_file(file_path)
-                            except Exception:
-                                original_text = None
-
-                            if original_text and len(original_text.strip()) > 10:
-                                try:
+                                if original_text and len(original_text.strip()) > 10:
+                                    logger.info(f"正在对文件 ({len(original_text)} 字符) 进行 AI 后处理...")
                                     refined_text = processor.process_text(original_text, progress_callback=progress)
+                                    
                                     if refined_text and not (refined_text.startswith('Error') or refined_text.startswith('Error:')):
-                                        # save refined outputs alongside subtitle
+                                        # 保存 结果
                                         txt_path = processor.save_refined_text(file_path, refined_text)
-                                        # create a minimal HTML preview
-                                        html_body = f"<div style=\"font-family: Arial, Helvetica, sans-serif; white-space: pre-wrap;\">{refined_text.replace('<','&lt;').replace('>','&gt;')}</div>"
+                                        # 创建带有基础美化的预览 HTML
+                                        html_body = f"<div class='refined-content' style='white-space: pre-wrap;'>{refined_text.replace('<','&lt;').replace('>','&gt;')}</div>"
+                                        html_path = processor.save_refined_html(file_path, html_body, "")
+                                        
+                                        # 尝试导出 PDF
                                         try:
-                                            html_path = processor.save_refined_html(file_path, html_body, "")
-                                        except Exception:
-                                            # fallback: write a very simple HTML file
-                                            try:
-                                                html_dir = os.path.join(os.getcwd(), 'outputs', os.path.splitext(os.path.basename(file_path))[0].replace('podcast_tmp_', ''))
-                                                os.makedirs(html_dir, exist_ok=True)
-                                                html_path = os.path.join(html_dir, os.path.splitext(os.path.basename(file_path))[0] + "_AI_Refined_Pretty.html")
-                                                with open(html_path, 'w', encoding='utf-8') as hf:
-                                                    hf.write(html_body)
-                                            except Exception:
-                                                html_path = None
+                                            pdf_path = processor.save_refined_pdf(file_path, refined_text)
+                                        except Exception as pdf_e:
+                                            logger.error(f"PDF 导出失败: {pdf_e}")
+                                            pdf_path = None
+                                            
+                                        for p in [txt_path, html_path, pdf_path]:
+                                            if p: download_list.append(p)
+                                        logger.info(f"✅ AI 润色文件已保存至：{os.path.dirname(txt_path)}")
                                     else:
-                                        txt_path = None
-                                        html_path = None
-                                except Exception:
-                                    txt_path = None
-                                    html_path = None
-                                # Try to save PDF as well
-                                try:
-                                    pdf_path = processor.save_refined_pdf(file_path, refined_text) if 'refined_text' in locals() and refined_text else None
-                                except Exception:
-                                    pdf_path = None
-
-                                for p in [txt_path, html_path, pdf_path]:
-                                    if p:
-                                        download_list.append(p)
-                    except Exception:
-                        # ensure pipeline does not fail because of LLM post-process
-                        pass
+                                        logger.error(f"❌ AI 润色返回异常内容: {refined_text[:100]}...")
+                                else:
+                                    logger.warning("音频文本太短，跳过 AI 润色。")
+                        except Exception as inner_e:
+                            logger.error(f"💥 AI 自动润色执行链崩溃: {inner_e}")
+                            logger.error(traceback.format_exc())
 
                     files_info[file_name] = {"subtitle": read_file(file_path), "time_for_task": time_for_task, "path": download_list}
 

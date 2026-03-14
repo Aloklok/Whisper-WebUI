@@ -18,9 +18,12 @@ FALLBACK_ENCODINGS = ['cp949', 'euc-kr']
 def load_yaml(path: str = DEFAULT_PARAMETERS_CONFIG_PATH, use_fallback: bool = True):
     yaml = YAML(typ="safe")
     yaml.preserve_quotes = True
+    if not os.path.exists(path):
+        return {}
     try:
         with open(path, 'r', encoding='utf-8') as file:
-            return yaml.load(file)
+            data = yaml.load(file)
+            return data if data is not None else {}
     except UnicodeDecodeError:
         if not use_fallback:
             raise

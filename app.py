@@ -592,7 +592,7 @@ class App:
                                 tb_title = gr.Label(label=_("Youtube Title"))
                                 tb_description = gr.Textbox(label=_("Youtube Description"), max_lines=15)
 
-                        pipeline_params, dd_file_format, cb_timestamp, _ = self.create_pipeline_inputs()
+                        pipeline_params, dd_file_format, cb_timestamp, _unused_auto_llm = self.create_pipeline_inputs()
 
                         with gr.Row():
                             btn_run = gr.Button(_("GENERATE SUBTITLE FILE"), variant="primary")
@@ -615,7 +615,7 @@ class App:
                             mic_input = gr.Microphone(label=_("Record with Mic"), type="filepath", interactive=True,
                                                       show_download_button=True)
 
-                        pipeline_params, dd_file_format, cb_timestamp, _ = self.create_pipeline_inputs()
+                        pipeline_params, dd_file_format, cb_timestamp, _unused_auto_llm = self.create_pipeline_inputs()
 
                         with gr.Row():
                             btn_run = gr.Button(_("GENERATE SUBTITLE FILE"), variant="primary")

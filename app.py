@@ -217,35 +217,47 @@ class App:
                                        interactive=True)
 
         def get_status_text(is_enabled):
-            return " (已开启)" if is_enabled else " (已关闭)"
+            return _(" (Enabled)") if is_enabled else _(" (Disabled)")
 
-        with gr.Accordion(_("Advanced Parameters"), open=False):
+        def update_acc_status(is_enabled, label_prefix, base_id):
+            status = get_status_text(is_enabled)
+            new_id = f"{base_id}_on" if is_enabled else f"{base_id}_off"
+            return gr.update(label=f"{label_prefix}{status}", elem_id=new_id)
+
+        with gr.Accordion(_("Advanced Parameters"), open=False, elem_id="acc_whisper_advanced"):
             whisper_inputs = WhisperParams.to_gradio_inputs(defaults=whisper_params, only_advanced=True,
                                                             whisper_type=self.args.whisper_type,
                                                             available_compute_types=self.whisper_inf.available_compute_types,
                                                             compute_type=self.whisper_inf.current_compute_type)
 
         uvr_label = _("Background Music Remover Filter")
-        with gr.Accordion(f"{uvr_label}{get_status_text(uvr_params['is_separate_bgm'])}", open=False) as acc_uvr:
+        uvr_id = "acc_uvr"
+        with gr.Accordion(f"{uvr_label}{get_status_text(uvr_params['is_separate_bgm'])}", 
+                          open=False, 
+                          elem_id=f"{uvr_id}_on" if uvr_params['is_separate_bgm'] else f"{uvr_id}_off") as acc_uvr:
             uvr_inputs = BGMSeparationParams.to_gradio_input(defaults=uvr_params,
                                                              available_models=self.whisper_inf.music_separator.available_models,
                                                              available_devices=self.whisper_inf.music_separator.available_devices,
                                                              device=self.whisper_inf.music_separator.device)
+        uvr_inputs[0].change(fn=lambda x: update_acc_status(x, uvr_label, uvr_id), inputs=uvr_inputs[0], outputs=acc_uvr)
 
         vad_label = _("Voice Detection Filter")
-        with gr.Accordion(f"{vad_label}{get_status_text(vad_params['vad_filter'])}", open=False) as acc_vad:
+        vad_id = "acc_vad"
+        with gr.Accordion(f"{vad_label}{get_status_text(vad_params['vad_filter'])}", 
+                          open=False, 
+                          elem_id=f"{vad_id}_on" if vad_params['vad_filter'] else f"{vad_id}_off") as acc_vad:
             vad_inputs = VadParams.to_gradio_inputs(defaults=vad_params)
+        vad_inputs[0].change(fn=lambda x: update_acc_status(x, vad_label, vad_id), inputs=vad_inputs[0], outputs=acc_vad)
 
         diarization_label = _("Diarization")
-        with gr.Accordion(f"{diarization_label}{get_status_text(diarization_params['is_diarize'])}", open=False) as acc_diarization:
+        diar_id = "acc_diarization"
+        with gr.Accordion(f"{diarization_label}{get_status_text(diarization_params['is_diarize'])}", 
+                          open=False, 
+                          elem_id=f"{diar_id}_on" if diarization_params['is_diarize'] else f"{diar_id}_off") as acc_diarization:
             diarization_inputs = DiarizationParams.to_gradio_inputs(defaults=diarization_params,
                                                                     available_devices=self.whisper_inf.diarizer.available_device,
                                                                     device=self.whisper_inf.diarizer.device)
-
-        # 绑定状态变化回调
-        uvr_inputs[0].change(fn=lambda x: gr.update(label=f"{uvr_label}{get_status_text(x)}"), inputs=uvr_inputs[0], outputs=acc_uvr)
-        vad_inputs[0].change(fn=lambda x: gr.update(label=f"{vad_label}{get_status_text(x)}"), inputs=vad_inputs[0], outputs=acc_vad)
-        diarization_inputs[0].change(fn=lambda x: gr.update(label=f"{diarization_label}{get_status_text(x)}"), inputs=diarization_inputs[0], outputs=acc_diarization)
+        diarization_inputs[0].change(fn=lambda x: update_acc_status(x, diarization_label, diar_id), inputs=diarization_inputs[0], outputs=acc_diarization)
 
         pipeline_inputs = [dd_model, dd_lang, cb_translate] + whisper_inputs + vad_inputs + diarization_inputs + uvr_inputs
 
@@ -282,22 +294,23 @@ class App:
                                 btn_download_podcast = gr.Button(_("Download"), scale=1, variant="secondary")
                             tb_podcast_status = gr.Textbox(label=_("Status"), interactive=False, visible=False)
 
-                        with gr.Column():
-                            input_file = gr.Files(type="filepath", label=_("Upload File here"), file_types=MEDIA_EXTENSION)
-                            tb_input_folder = gr.Textbox(label="Input Folder Path (Optional)",
-                                                         info="Optional: Specify the folder path where the input files are located, if you prefer to use local files instead of uploading them."
-                                                              " Leave this field empty if you do not wish to use a local path.",
-                                                         visible=self.args.colab,
-                                                         value="")
-                            cb_include_subdirectory = gr.Checkbox(label="Include Subdirectory Files",
-                                                                  info="When using Input Folder Path above, whether to include all files in the subdirectory or not.",
-                                                                  visible=self.args.colab,
-                                                                  value=False)
-                            cb_save_same_dir = gr.Checkbox(label="Save outputs at same directory",
-                                                           info="When using Input Folder Path above, whether to save output in the same directory as inputs or not, in addition to the original"
-                                                                " output directory.",
-                                                           visible=self.args.colab,
-                                                           value=True)
+                        with gr.Accordion(_("Local Files"), open=False):
+                            with gr.Column():
+                                input_file = gr.Files(type="filepath", label=_("Upload File here"), file_types=MEDIA_EXTENSION)
+                                tb_input_folder = gr.Textbox(label="Input Folder Path (Optional)",
+                                                             info="Optional: Specify the folder path where the input files are located, if you prefer to use local files instead of uploading them."
+                                                                  " Leave this field empty if you do not wish to use a local path.",
+                                                             visible=self.args.colab,
+                                                             value="")
+                                cb_include_subdirectory = gr.Checkbox(label="Include Subdirectory Files",
+                                                                      info="When using Input Folder Path above, whether to include all files in the subdirectory or not.",
+                                                                      visible=self.args.colab,
+                                                                      value=False)
+                                cb_save_same_dir = gr.Checkbox(label="Save outputs at same directory",
+                                                               info="When using Input Folder Path above, whether to save output in the same directory as inputs or not, in addition to the original"
+                                                                    " output directory.",
+                                                               visible=self.args.colab,
+                                                               value=True)
                         pipeline_params, dd_file_format, cb_timestamp = self.create_pipeline_inputs()
 
                         with gr.Row():
@@ -309,74 +322,75 @@ class App:
                             btn_openfolder = gr.Button('📂', scale=1)
 
                         # AI 洗稿/总结预览区
-                        with gr.Accordion("✨ AI 一键整理 (LLM Post-Processing)", open=True):
+                        with gr.Accordion(_("✨ AI 一键整理 (LLM Post-Processing)"), open=True):
                             with gr.Row():
-                                btn_ai_refine = gr.Button("✨ AI 一键整理润色", variant="secondary")
+                                btn_ai_refine = gr.Button(_("✨ AI One-Click Refine"), variant="secondary")
                             
                             with gr.Row():
                                 with gr.Column(scale=1): # 左侧留白
                                     pass
                                 with gr.Column(scale=8): # 核心阅读区域
-                                    tb_ai_refined_preview = gr.HTML(label="AI 整理预览")
-                                    file_ai_refined = gr.Files(label="AI 整理结果下载 (含美化版 HTML)", interactive=False)
+                                    tb_ai_refined_preview = gr.HTML(label=_("AI Refinement Preview"))
+                                    file_ai_refined = gr.Files(label=_("AI Refinement Download (Includes Pretty HTML)"), interactive=False)
                                 with gr.Column(scale=1): # 右侧留白
                                     pass
 
                         params = [input_file, tb_input_folder, cb_include_subdirectory, cb_save_same_dir,
                                   dd_file_format, cb_timestamp]
                         params = params + pipeline_params
+
                         def _run_and_maybe_refine(*all_inputs):
                             """
-                            Wrapper to run transcription, then optionally trigger AI refine when the
-                            Diarization.auto_llm_refine flag is enabled.
-                            all_inputs mirrors the `params` list passed to the button click.
+                            Wrapper to run transcription.
+                            Since logic of auto refining is moved to transcribe_file,
+                            we just need to parse the results correctly for UI.
                             """
                             try:
-                                # first 6 are fixed params: input_file, tb_input_folder, cb_include_subdirectory, cb_save_same_dir, dd_file_format, cb_timestamp
                                 fixed = all_inputs[:6]
                                 pipeline_vals = list(all_inputs[6:])
 
                                 # call original transcription function
-                                # note: transcribe_file signature has `progress` before `*pipeline_params`,
-                                # so we must pass an explicit progress placeholder to keep positional args aligned
                                 result_str, files = self.whisper_inf.transcribe_file(*fixed, gr.Progress(), *pipeline_vals)
 
-                                # determine whether to auto-run LLM refine
-                                try:
-                                    params_obj = TranscriptionPipelineParams.from_list(pipeline_vals)
-                                    do_auto = getattr(params_obj.diarization, 'auto_llm_refine', False)
-                                except Exception:
-                                    do_auto = False
+                                # logic for UI update:
+                                # files[0] is always subtitle.
+                                # if auto_llm_refine is ON, files will contain [subtitle, txt, html, pdf]
+                                refined_html = ""
+                                refined_files = []
+                                
+                                if files and len(files) > 1:
+                                    # find the .html file for preview
+                                    for f in files:
+                                        f_path = str(f.name if hasattr(f, "name") else f)
+                                        if f_path.endswith("_AI_Refined_Pretty.html"):
+                                            try:
+                                                with open(f_path, "r", encoding="utf-8") as hf:
+                                                    refined_html = hf.read()
+                                            except:
+                                                pass
+                                    # find and filter refine-related files for the LLM download panel
+                                    for f in files:
+                                        f_path = str(f.name if hasattr(f, "name") else f)
+                                        if "_AI_Refined" in f_path:
+                                            refined_files.append(f)
 
-                                if do_auto:
-                                    try:
-                                        # call the existing handler to run LLM post process
-                                        html_content, download_files = _ai_post_process(files, result_str)
-                                        # if AI produced download files, prefer those for the files panel
-                                        files_out = download_files if download_files else files
-                                    except Exception:
-                                        files_out = files
-                                else:
-                                    files_out = files
-
-                                return result_str, files_out
+                                return result_str, files, refined_html, refined_files
                             except Exception as e:
-                                # bubble up so Gradio can display error
                                 raise
 
                         btn_run.click(fn=_run_and_maybe_refine,
                                       inputs=params,
-                                      outputs=[tb_indicator, files_subtitles])
+                                      outputs=[tb_indicator, files_subtitles, tb_ai_refined_preview, file_ai_refined])
                         btn_openfolder.click(fn=lambda: self.open_folder("outputs"), inputs=None, outputs=None)
 
                         def _download_podcast(url):
                             if not url or not url.strip():
-                                return gr.update(), gr.update(value="请输入播客链接", visible=True)
+                                return gr.update(), gr.update(value=_("Please enter podcast link"), visible=True)
                             try:
                                 audio_path, title = download_podcast_audio(url)
-                                return gr.update(value=[audio_path]), gr.update(value=f"✅ 下载完成: {title}", visible=True)
+                                return gr.update(value=[audio_path]), gr.update(value=_("Download finished: ") + title, visible=True)
                             except Exception as e:
-                                return gr.update(), gr.update(value=f"❌ 下载失败: {e}", visible=True)
+                                return gr.update(), gr.update(value=_("Download failed: ") + str(e), visible=True)
 
                         btn_download_podcast.click(
                             fn=_download_podcast,
@@ -424,8 +438,8 @@ class App:
                             )
                             
                             refined_text = processor.process_text(original_text, progress_callback=progress)
-                            if not refined_text or refined_text.startswith("Error:"):
-                                return format_refined_text_to_html(refined_text if refined_text else "AI 整理失败，请检查 API 配置。"), None
+                            if not original_text or original_text.startswith("Error:"):
+                                return format_refined_text_to_html(refined_text if refined_text else _("AI post-processing failed, please check API configuration.")), None
                             
                             # Determine the media file to use for naming (prefer original MP3 when available)
                             media_for_naming = txt_file
@@ -717,7 +731,16 @@ class App:
     @staticmethod
     def open_folder(folder_path: str):
         if os.path.exists(folder_path):
-            os.system(f"start {folder_path}")
+            import platform
+            try:
+                if platform.system() == "Windows":
+                    os.startfile(folder_path)
+                elif platform.system() == "Darwin":
+                    os.system(f"open \"{folder_path}\"")
+                else:
+                    os.system(f"xdg-open \"{folder_path}\"")
+            except Exception as e:
+                logger.error(f"Failed to open folder {folder_path}: {e}")
         else:
             os.makedirs(folder_path, exist_ok=True)
             logger.info(f"The directory path {folder_path} has newly created.")

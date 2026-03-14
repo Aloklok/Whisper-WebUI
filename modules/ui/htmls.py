@@ -44,7 +44,54 @@ body, .gradio-container, * {
   text-decoration: underline;
 }
 
-/* Transcript Styles */
+/* --- 新增：功能卡片标题着色 (状态联动版) --- */
+/* 高级选项 (始终蓝色) */
+#acc_whisper_advanced > div > summary,
+#acc_whisper_advanced .label-wrap {
+    background-color: #eff6ff !important;
+    color: #1e40af !important;
+    border-radius: 8px 8px 0 0;
+}
+
+/* 开启状态色彩 (On) */
+#acc_uvr_on > div > summary, #acc_uvr_on .label-wrap {
+    background-color: #eff6ff !important; /* 淡蓝 */
+    color: #1e40af !important;
+    border-radius: 8px 8px 0 0;
+}
+
+#acc_vad_on > div > summary, #acc_vad_on .label-wrap {
+    background-color: #f0fdf4 !important; /* 淡绿 */
+    color: #166534 !important;
+    border-radius: 8px 8px 0 0;
+}
+
+#acc_diarization_on > div > summary, #acc_diarization_on .label-wrap {
+    background-color: #f5f3ff !important; /* 淡紫 */
+    color: #5b21b6 !important;
+    border-radius: 8px 8px 0 0;
+}
+
+/* 关闭状态色彩 (Off - 统一灰色) */
+#acc_uvr_off > div > summary, #acc_uvr_off .label-wrap,
+#acc_vad_off > div > summary, #acc_vad_off .label-wrap,
+#acc_diarization_off > div > summary, #acc_diarization_off .label-wrap {
+    background-color: #f3f4f6 !important; /* 浅灰 */
+    color: #6b7280 !important;
+    border-radius: 8px 8px 0 0;
+}
+
+/* 统一手风琴标题样式增强 */
+summary {
+    font-weight: 700 !important;
+    padding: 10px 15px !important;
+    cursor: pointer;
+    transition: all 0.2s ease-in-out !important;
+}
+summary:hover {
+    filter: brightness(0.95);
+}
+
 .transcript-container {
     padding: 30px;
     background: #fdfdfd;
@@ -53,9 +100,8 @@ body, .gradio-container, * {
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    /* 移除 gap，交给内部的 topic-section 控制 */
     border: 1px solid #f0f0f0;
-    box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
 }
 .topic-section {
     display: flex;

@@ -337,7 +337,9 @@ class App:
                                 pipeline_vals = list(all_inputs[6:])
 
                                 # call original transcription function
-                                result_str, files = self.whisper_inf.transcribe_file(*fixed, *pipeline_vals)
+                                # note: transcribe_file signature has `progress` before `*pipeline_params`,
+                                # so we must pass an explicit progress placeholder to keep positional args aligned
+                                result_str, files = self.whisper_inf.transcribe_file(*fixed, gr.Progress(), *pipeline_vals)
 
                                 # determine whether to auto-run LLM refine
                                 try:

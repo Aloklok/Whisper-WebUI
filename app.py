@@ -311,20 +311,22 @@ class App:
                                                                     device=self.whisper_inf.diarizer.device)
         diarization_inputs[0].change(fn=lambda x: update_acc_status(x, diarization_label, diar_id), inputs=diarization_inputs[0], outputs=acc_diarization)
 
-        pipeline_inputs_ordered = [
-            dd_model, dd_lang, cb_translate
-        ] + whisper_inputs + vad_inputs + diarization_inputs + uvr_inputs
-
-        # 动态计算 diarization 块中 auto_llm_refine 所在的索引位置
-        # 顺序：[base(3)] + whisper + vad + diarization
-        diar_idx = 3 + len(whisper_inputs) + len(vad_inputs) + len(diarization_inputs)
+        # 补全由于从 DiarizationParams 移除导致的组件缺失，并将其设为不可见，由调用者决定位置
+        cb_auto_llm_refine = gr.Checkbox(
+            label=_("自动 AI 润色（生成后自动运行 LLM 并保存结果）"),
+            value=diarization_params.get("auto_llm_refine", False),
+            info=_("如果启用，系统将在字幕生成完成后自动调用 LLM 进行润色并保存 TXT/HTML/PDF 到 outputs/<文件名>/ 中。"),
+            visible=False
+        )
+        # 将其插入到 pipeline_inputs 中 Diarization 部分的末尾（第 7 个位置），确保列表解析正确
+        # Whisper(3+29) + VAD(6) + Diarization(6+1)
+        pipeline_inputs = [dd_model, dd_lang, cb_translate] + whisper_inputs + vad_inputs + diarization_inputs + [cb_auto_llm_refine] + uvr_inputs
 
         return (
-            pipeline_inputs_ordered,
+            pipeline_inputs,
             dd_file_format,
             cb_timestamp,
-            diarization_params,
-            diar_idx
+            cb_auto_llm_refine
         )
 
     def launch(self):
@@ -372,7 +374,7 @@ class App:
                                                                     " output directory.",
                                                                visible=self.args.colab,
                                                                value=True)
-                        pipeline_params, dd_file_format, cb_timestamp, diarization_params, diar_idx = self.create_pipeline_inputs()
+                        pipeline_params, dd_file_format, cb_timestamp, cb_auto_llm_refine = self.create_pipeline_inputs()
 
                         with gr.Row():
                             btn_run = gr.Button(_("GENERATE SUBTITLE FILE"), variant="primary")
@@ -385,30 +387,24 @@ class App:
                         # AI 洗稿/总结预览区
                         with gr.Accordion(_("✨ AI 一键整理 (LLM Post-Processing)"), open=True, elem_id="acc_ai_post_processing"):
                             with gr.Row():
-                                with gr.Column():
-                                    cb_auto_refine = gr.Checkbox(
-                                        label=_("自动 AI 润色（生成后自动运行 LLM 并保存结果）"),
-                                        value=diarization_params.get("auto_llm_refine", False),
-                                        info=_("如果启用，系统将在字幕生成完成后自动调用 LLM 进行润色并保存 TXT/HTML/PDF 到 outputs/<文件名>/ 中。"),
-                                    )
-                            with gr.Row():
                                 btn_ai_refine = gr.Button(_("✨ AI One-Click Refine"), variant="secondary")
                             
                             with gr.Row():
                                 with gr.Column(scale=1): # 左侧留白
                                     pass
                                 with gr.Column(scale=8): # 核心阅读区域
+                                    # 将自动润色复选框移动到这里，并设为可见
+                                    cb_auto_llm_refine.visible = True
+                                    cb_auto_llm_refine.render()
+                                    
                                     tb_ai_refined_preview = gr.HTML(label=_("AI Refinement Preview"))
                                     file_ai_refined = gr.Files(label=_("AI Refinement Download (Includes Pretty HTML)"), interactive=False)
                                 with gr.Column(scale=1): # 右侧留白
                                     pass
 
-                        # 构造最终参数列表。注意：TranscriptionPipelineParams.from_list 期望 cb_auto_refine 在 diarization_inputs 的末尾。
-                        params = [input_file, tb_input_folder, cb_include_subdirectory, cb_save_same_dir, dd_file_format, cb_timestamp]
-                        p_start = pipeline_params[:diar_idx]
-                        p_end = pipeline_params[diar_idx:]
-                        final_pipeline_params = p_start + [cb_auto_refine] + p_end
-                        params = params + final_pipeline_params
+                        params = [input_file, tb_input_folder, cb_include_subdirectory, cb_save_same_dir,
+                                  dd_file_format, cb_timestamp]
+                        params = params + pipeline_params
 
                         def _run_and_maybe_refine(*all_inputs, progress=gr.Progress()):
                             """
@@ -596,19 +592,7 @@ class App:
                                 tb_title = gr.Label(label=_("Youtube Title"))
                                 tb_description = gr.Textbox(label=_("Youtube Description"), max_lines=15)
 
-                        pipeline_params, dd_file_format, cb_timestamp, diar_cfg, diar_idx = self.create_pipeline_inputs()
-                        # 将 cb_auto_refine 放在 diarization accordion 底部（保持旧布局）
-                        with acc_diarization:
-                            cb_auto_refine = gr.Checkbox(
-                                label=_("自动 AI 润色（生成后自动运行 LLM 并保存结果）"),
-                                value=diar_cfg.get("auto_llm_refine", False),
-                                visible=True # 明确使其可见
-                            )
-                        
-                        # 同样插入到正确索引处
-                        p_start = pipeline_params[:diar_idx]
-                        p_end = pipeline_params[diar_idx:]
-                        final_pipeline_params = p_start + [cb_auto_refine] + p_end
+                        pipeline_params, dd_file_format, cb_timestamp, _ = self.create_pipeline_inputs()
 
                         with gr.Row():
                             btn_run = gr.Button(_("GENERATE SUBTITLE FILE"), variant="primary")
@@ -620,7 +604,7 @@ class App:
                         params = [tb_youtubelink, dd_file_format, cb_timestamp]
 
                         btn_run.click(fn=self.whisper_inf.transcribe_youtube,
-                                      inputs=params + final_pipeline_params,
+                                      inputs=params + pipeline_params,
                                       outputs=[tb_indicator, files_subtitles])
                         tb_youtubelink.change(get_ytmetas, inputs=[tb_youtubelink],
                                               outputs=[img_thumbnail, tb_title, tb_description])
@@ -631,16 +615,7 @@ class App:
                             mic_input = gr.Microphone(label=_("Record with Mic"), type="filepath", interactive=True,
                                                       show_download_button=True)
 
-                        pipeline_params, dd_file_format, cb_timestamp, diar_cfg, diar_idx = self.create_pipeline_inputs()
-                        with acc_diarization:
-                            cb_auto_refine = gr.Checkbox(
-                                label=_("自动 AI 润色（生成后自动运行 LLM 并保存结果）"),
-                                value=diar_cfg.get("auto_llm_refine", False),
-                                visible=True
-                            )
-                        p_start = pipeline_params[:diar_idx]
-                        p_end = pipeline_params[diar_idx:]
-                        final_pipeline_params = p_start + [cb_auto_refine] + p_end
+                        pipeline_params, dd_file_format, cb_timestamp, _ = self.create_pipeline_inputs()
 
                         with gr.Row():
                             btn_run = gr.Button(_("GENERATE SUBTITLE FILE"), variant="primary")
@@ -652,7 +627,7 @@ class App:
                         params = [mic_input, dd_file_format, cb_timestamp]
 
                         btn_run.click(fn=self.whisper_inf.transcribe_mic,
-                                      inputs=params + final_pipeline_params,
+                                      inputs=params + pipeline_params,
                                       outputs=[tb_indicator, files_subtitles])
                         btn_openfolder.click(fn=lambda: self.open_folder("outputs"), inputs=None, outputs=None)
 

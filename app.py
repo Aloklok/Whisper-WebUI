@@ -216,8 +216,8 @@ class App:
                                        interactive=True)
 
         def get_status_text(is_enabled):
-            # 移除所有 HTML 标签，回归最稳健的 Unicode 符号 + 纯文字模式
-            return " ● " + _("ON") if is_enabled else " ○ " + _("OFF")
+            # 将 ON/OFF 直接硬编码为中文符号，防止 i18n 框架在初始化时因上下文缺失回退到英文
+            return " ● 开启" if is_enabled else " ○ 关闭"
 
         def update_acc_status(is_enabled, label_prefix, base_id):
             status_text = get_status_text(is_enabled)
@@ -231,7 +231,9 @@ class App:
 
         uvr_label = _("Background Music Remover Filter")
         uvr_id = "acc_uvr"
-        with gr.Accordion(f"{uvr_label} {get_status_text(uvr_params['is_separate_bgm'])}", 
+        # 初始化时直接显示中文状态，解决 Gradio-i18n 冷启动字符串拼接不生效的问题
+        init_status = " ● 开启" if uvr_params['is_separate_bgm'] else " ○ 关闭"
+        with gr.Accordion(f"{uvr_label}{init_status}", 
                           open=False, 
                           elem_id=uvr_id) as acc_uvr:
             uvr_inputs = BGMSeparationParams.to_gradio_input(defaults=uvr_params,
@@ -242,7 +244,8 @@ class App:
 
         vad_label = _("Voice Detection Filter")
         vad_id = "acc_vad"
-        with gr.Accordion(f"{vad_label} {get_status_text(vad_params['vad_filter'])}", 
+        init_status = " ● 开启" if vad_params['vad_filter'] else " ○ 关闭"
+        with gr.Accordion(f"{vad_label}{init_status}", 
                           open=False, 
                           elem_id=vad_id) as acc_vad:
             vad_inputs = VadParams.to_gradio_inputs(defaults=vad_params)
@@ -250,7 +253,8 @@ class App:
 
         diarization_label = _("Diarization")
         diar_id = "acc_diarization"
-        with gr.Accordion(f"{diarization_label} {get_status_text(diarization_params['is_diarize'])}", 
+        init_status = " ● 开启" if diarization_params['is_diarize'] else " ○ 关闭"
+        with gr.Accordion(f"{diarization_label}{init_status}", 
                           open=False, 
                           elem_id=diar_id) as acc_diarization:
             diarization_inputs = DiarizationParams.to_gradio_inputs(defaults=diarization_params,
@@ -286,13 +290,14 @@ class App:
                         with gr.Group(): # 使用 Group 而非 Accordion 使其更紧凑
                             with gr.Row():
                                 tb_podcast_link = gr.Textbox(
-                                    label="", # 强制置空，双重保险
+                                    label="", 
                                     show_label=False,
+                                    container=False, # 移除额外容器，解决 Textbox 标题残留问题
                                     placeholder=_("Podcast URL (Xiaoyuzhou etc.)"),
                                     scale=4
                                 )
                                 btn_download_podcast = gr.Button(_("Download"), scale=1, variant="secondary")
-                            tb_podcast_status = gr.Textbox(label="", show_label=False, interactive=False, visible=False)
+                            tb_podcast_status = gr.Textbox(label="", show_label=False, container=False, interactive=False, visible=False)
 
                         with gr.Accordion(_("Local Files"), open=False):
                             with gr.Column():

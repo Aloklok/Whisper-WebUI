@@ -24,6 +24,7 @@ from modules.utils.audio_manager import validate_audio
 from modules.whisper.data_classes import *
 from modules.diarize.diarizer import Diarizer
 from modules.vad.silero_vad import SileroVAD
+from modules.llm.llm_processor import LLMProcessor
 
 
 logger = get_logger()
@@ -397,7 +398,70 @@ class BaseTranscriptionPipeline(ABC):
                         add_timestamp=add_timestamp,
                         **writer_options
                     )
-                files_info[file_name] = {"subtitle": read_file(file_path), "time_for_task": time_for_task, "path": file_path}
+                    # Collect downloadable files (subtitle always first)
+                    download_list = [file_path]
+                    # 如果配置了 Diarization.auto_llm_refine，则在此处自动调用 LLM 进行润色并保存结果
+                    try:
+                        if getattr(params.diarization, 'auto_llm_refine', False):
+                            try:
+                                llm_config = load_yaml(DEFAULT_PARAMETERS_CONFIG_PATH).get('llm_post_process', {})
+                            except Exception:
+                                llm_config = {}
+
+                            processor = LLMProcessor(
+                                api_base=llm_config.get('api_base'),
+                                api_key=llm_config.get('api_key'),
+                                model=llm_config.get('model'),
+                                prompt=llm_config.get('prompt'),
+                                reasoning=llm_config.get('reasoning', False)
+                            )
+
+                            # read generated subtitle text
+                            try:
+                                original_text = read_file(file_path)
+                            except Exception:
+                                original_text = None
+
+                            if original_text and len(original_text.strip()) > 10:
+                                try:
+                                    refined_text = processor.process_text(original_text, progress_callback=progress)
+                                    if refined_text and not (refined_text.startswith('Error') or refined_text.startswith('Error:')):
+                                        # save refined outputs alongside subtitle
+                                        txt_path = processor.save_refined_text(file_path, refined_text)
+                                        # create a minimal HTML preview
+                                        html_body = f"<div style=\"font-family: Arial, Helvetica, sans-serif; white-space: pre-wrap;\">{refined_text.replace('<','&lt;').replace('>','&gt;')}</div>"
+                                        try:
+                                            html_path = processor.save_refined_html(file_path, html_body, "")
+                                        except Exception:
+                                            # fallback: write a very simple HTML file
+                                            try:
+                                                html_dir = os.path.join(os.getcwd(), 'outputs', os.path.splitext(os.path.basename(file_path))[0].replace('podcast_tmp_', ''))
+                                                os.makedirs(html_dir, exist_ok=True)
+                                                html_path = os.path.join(html_dir, os.path.splitext(os.path.basename(file_path))[0] + "_AI_Refined_Pretty.html")
+                                                with open(html_path, 'w', encoding='utf-8') as hf:
+                                                    hf.write(html_body)
+                                            except Exception:
+                                                html_path = None
+                                    else:
+                                        txt_path = None
+                                        html_path = None
+                                except Exception:
+                                    txt_path = None
+                                    html_path = None
+                                # Try to save PDF as well
+                                try:
+                                    pdf_path = processor.save_refined_pdf(file_path, refined_text) if 'refined_text' in locals() and refined_text else None
+                                except Exception:
+                                    pdf_path = None
+
+                                for p in [txt_path, html_path, pdf_path]:
+                                    if p:
+                                        download_list.append(p)
+                    except Exception:
+                        # ensure pipeline does not fail because of LLM post-process
+                        pass
+
+                    files_info[file_name] = {"subtitle": read_file(file_path), "time_for_task": time_for_task, "path": download_list}
 
             total_result = ''
             total_time = 0
@@ -408,7 +472,14 @@ class BaseTranscriptionPipeline(ABC):
                 total_time += info["time_for_task"]
 
             result_str = f"Done in {self.format_time(total_time)}! Subtitle is in the outputs folder.\n\n{total_result}"
-            result_file_path = [info['path'] for info in files_info.values()]
+            # Flatten download paths (some entries may include multiple files when auto LLM refine is enabled)
+            result_file_path = []
+            for info in files_info.values():
+                p = info.get('path')
+                if isinstance(p, list):
+                    result_file_path.extend(p)
+                elif p:
+                    result_file_path.append(p)
 
             # Log completion and elapsed time to console for clarity
             try:

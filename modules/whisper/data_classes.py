@@ -212,6 +212,7 @@ class DiarizationParams(BaseParams):
     )
     min_speakers: Optional[int] = Field(default=None, description="Minimum number of speakers")
     max_speakers: Optional[int] = Field(default=None, description="Maximum number of speakers")
+    auto_llm_refine: bool = Field(default=False, description="自动在生成字幕后运行 AI 润色（保存 AI 整理的 TXT/HTML/PDF 到 outputs/）")
 
     @classmethod
     def to_gradio_inputs(cls,
@@ -248,6 +249,12 @@ class DiarizationParams(BaseParams):
                 value=defaults.get("max_speakers", GRADIO_NONE_NUMBER_MIN),
                 precision=0,
                 info=_("Maximum number of speakers. (Optional)")
+            )
+            ,
+            gr.Checkbox(
+                label=_("自动 AI 润色（生成后自动运行 LLM 并保存结果）"),
+                value=defaults.get("auto_llm_refine", cls.__fields__["auto_llm_refine"].default),
+                info=_("如果启用，系统将在字幕生成完成后自动调用 LLM 进行润色并保存 TXT/HTML/PDF 到 outputs/<文件名>/ 中。"),
             )
         ]
 

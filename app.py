@@ -309,7 +309,7 @@ class App:
                             btn_openfolder = gr.Button('📂', scale=1)
 
                         # AI 洗稿/总结预览区
-                        with gr.Accordion("✨ AI 一键整理 (LLM Post-Processing)", open=False):
+                        with gr.Accordion("✨ AI 一键整理 (LLM Post-Processing)", open=True):
                             with gr.Row():
                                 btn_ai_refine = gr.Button("✨ AI 一键整理润色", variant="secondary")
                             
@@ -325,7 +325,44 @@ class App:
                         params = [input_file, tb_input_folder, cb_include_subdirectory, cb_save_same_dir,
                                   dd_file_format, cb_timestamp]
                         params = params + pipeline_params
-                        btn_run.click(fn=self.whisper_inf.transcribe_file,
+                        def _run_and_maybe_refine(*all_inputs):
+                            """
+                            Wrapper to run transcription, then optionally trigger AI refine when the
+                            Diarization.auto_llm_refine flag is enabled.
+                            all_inputs mirrors the `params` list passed to the button click.
+                            """
+                            try:
+                                # first 6 are fixed params: input_file, tb_input_folder, cb_include_subdirectory, cb_save_same_dir, dd_file_format, cb_timestamp
+                                fixed = all_inputs[:6]
+                                pipeline_vals = list(all_inputs[6:])
+
+                                # call original transcription function
+                                result_str, files = self.whisper_inf.transcribe_file(*fixed, *pipeline_vals)
+
+                                # determine whether to auto-run LLM refine
+                                try:
+                                    params_obj = TranscriptionPipelineParams.from_list(pipeline_vals)
+                                    do_auto = getattr(params_obj.diarization, 'auto_llm_refine', False)
+                                except Exception:
+                                    do_auto = False
+
+                                if do_auto:
+                                    try:
+                                        # call the existing handler to run LLM post process
+                                        html_content, download_files = _ai_post_process(files, result_str)
+                                        # if AI produced download files, prefer those for the files panel
+                                        files_out = download_files if download_files else files
+                                    except Exception:
+                                        files_out = files
+                                else:
+                                    files_out = files
+
+                                return result_str, files_out
+                            except Exception as e:
+                                # bubble up so Gradio can display error
+                                raise
+
+                        btn_run.click(fn=_run_and_maybe_refine,
                                       inputs=params,
                                       outputs=[tb_indicator, files_subtitles])
                         btn_openfolder.click(fn=lambda: self.open_folder("outputs"), inputs=None, outputs=None)
@@ -431,7 +468,29 @@ class App:
                             download_files = [txt_path, html_path]
                             if pdf_path:
                                 download_files.append(pdf_path)
-                            
+                            # 尝试自动打开输出目录，方便用户查看生成的文件
+                            try:
+                                # 优先以 txt_path 为准，否则以 media_for_naming 的目录为准
+                                folder_to_open = None
+                                if txt_path and os.path.exists(txt_path):
+                                    folder_to_open = os.path.dirname(txt_path)
+                                elif media_for_naming and os.path.exists(media_for_naming):
+                                    folder_to_open = os.path.dirname(media_for_naming)
+                                else:
+                                    # fallback: outputs/<clean_name>/ pattern
+                                    try:
+                                        cleaned = os.path.splitext(os.path.basename(media_for_naming))[0].replace('podcast_tmp_', '')
+                                        folder_to_open = os.path.join(os.getcwd(), 'outputs', cleaned)
+                                    except Exception:
+                                        folder_to_open = None
+
+                                if folder_to_open:
+                                    # open_folder will create directory if missing
+                                    self.open_folder(folder_to_open)
+                            except Exception:
+                                # don't let UI break if opening fails
+                                pass
+
                             return html_content, download_files
 
                         btn_ai_refine.click(

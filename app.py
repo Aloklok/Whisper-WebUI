@@ -376,6 +376,9 @@ class App:
                                                                visible=self.args.colab,
                                                                value=True)
                         pipeline_params, dd_file_format, cb_timestamp, cb_auto_llm_refine = self.create_pipeline_inputs()
+                        with gr.Group(): # 自动 AI 润色自成一个独立卡片
+                            cb_auto_llm_refine.visible = True
+                            cb_auto_llm_refine.render()
 
                         with gr.Row():
                             btn_run = gr.Button(_("GENERATE SUBTITLE FILE"), variant="primary")
@@ -394,10 +397,6 @@ class App:
                                 with gr.Column(scale=1): # 左侧留白
                                     pass
                                 with gr.Column(scale=8): # 核心阅读区域
-                                    # 将自动润色复选框移动到这里，并设为可见
-                                    cb_auto_llm_refine.visible = True
-                                    cb_auto_llm_refine.render()
-                                    
                                     tb_ai_refined_preview = gr.HTML(label=_("AI Refinement Preview"))
                                     file_ai_refined = gr.Files(label=_("AI Refinement Download (Includes Pretty HTML)"), interactive=False)
                                 with gr.Column(scale=1): # 右侧留白

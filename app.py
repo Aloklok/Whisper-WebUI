@@ -316,7 +316,8 @@ class App:
             label=_("自动 AI 润色（生成后自动运行 LLM 并保存结果）"),
             value=diarization_params.get("auto_llm_refine", False),
             info=_("如果启用，系统将在字幕生成完成后自动调用 LLM 进行润色并保存 TXT/HTML/PDF 到 outputs/<文件名>/ 中。"),
-            visible=False
+            visible=False,
+            render=False
         )
         # 将其插入到 pipeline_inputs 中 Diarization 部分的末尾（第 7 个位置），确保列表解析正确
         # Whisper(3+29) + VAD(6) + Diarization(6+1)

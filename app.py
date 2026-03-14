@@ -216,14 +216,12 @@ class App:
                                        interactive=True)
 
         def get_status_text(is_enabled):
-            status_cls = "status-on" if is_enabled else "status-off"
-            status_label = _("ON") if is_enabled else _("OFF")
-            return f'<span class="status-pill {status_cls}">{status_label}</span>'
+            # 移除所有 HTML 标签，回归最稳健的 Unicode 符号 + 纯文字模式
+            return " ● " + _("ON") if is_enabled else " ○ " + _("OFF")
 
         def update_acc_status(is_enabled, label_prefix, base_id):
-            status_html = get_status_text(is_enabled)
-            # 这里的 label 可以包含 HTML，Gradio Accordion 支持简单 HTML 或我们在 CSS 中处理
-            return gr.update(label=f"{label_prefix} {status_html}")
+            status_text = get_status_text(is_enabled)
+            return gr.update(label=f"{label_prefix}{status_text}")
 
         with gr.Accordion(_("Advanced Parameters"), open=False, elem_id="acc_whisper_advanced"):
             whisper_inputs = WhisperParams.to_gradio_inputs(defaults=whisper_params, only_advanced=True,
@@ -288,12 +286,13 @@ class App:
                         with gr.Group(): # 使用 Group 而非 Accordion 使其更紧凑
                             with gr.Row():
                                 tb_podcast_link = gr.Textbox(
+                                    label="", # 强制置空，双重保险
                                     show_label=False,
                                     placeholder=_("Podcast URL (Xiaoyuzhou etc.)"),
                                     scale=4
                                 )
                                 btn_download_podcast = gr.Button(_("Download"), scale=1, variant="secondary")
-                            tb_podcast_status = gr.Textbox(show_label=False, interactive=False, visible=False)
+                            tb_podcast_status = gr.Textbox(label="", show_label=False, interactive=False, visible=False)
 
                         with gr.Accordion(_("Local Files"), open=False):
                             with gr.Column():

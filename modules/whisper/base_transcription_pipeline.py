@@ -659,8 +659,11 @@ class BaseTranscriptionPipeline(ABC):
 
         if self.device == "cuda":
             torch.cuda.empty_cache()
-            torch.cuda.ipc_collect() # 物理清理进程间通信共享显存
+            # 稳定性优化：移除 ipc_collect()。该函数在某些驱动版本下会导致进程闪退
+            # torch.cuda.ipc_collect() 
             torch.cuda.reset_max_memory_allocated()
+            # 引入缓冲期：给 GPU 驱动程序 1 秒钟物理释放资源的时间，防止加载新模型时发生资源竞态导致的硬崩溃
+            time.sleep(1.0)
         elif self.device == "xpu":
             torch.xpu.empty_cache()
             torch.xpu.reset_accumulated_memory_stats()

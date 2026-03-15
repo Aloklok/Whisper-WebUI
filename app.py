@@ -282,6 +282,10 @@ class App:
                         pipeline_params, dd_file_format, cb_timestamp, cb_auto_llm_refine = self.create_pipeline_inputs()
                         # 结果输出主容器：将转录与 AI 润色合并，确保进度条全局统一
                         with gr.Column(variant="compact", elem_id="main_output_container"):
+                            with gr.Group(): # 自动 AI 润色自成一个独立卡片
+                                cb_auto_llm_refine.visible = True
+                                cb_auto_llm_refine.render()
+
                             with gr.Row():
                                 btn_run = gr.Button(_("GENERATE SUBTITLE FILE"), variant="primary")
 

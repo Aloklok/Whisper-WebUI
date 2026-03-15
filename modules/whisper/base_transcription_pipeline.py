@@ -270,8 +270,17 @@ class BaseTranscriptionPipeline(ABC):
         )
         if whisper_params.enable_offload:
             self.offload()
+            # 强化稳定性：卸载 Whisper 后强制静默 1.2 秒，给 GPU 显存物理归还腾挪时间
+            time.sleep(1.2)
+            gc.collect()
 
-        if vad_params.vad_filter:
+        if vad_params.vad_filter and not diarization_params.is_diarize:
+            # 内存回收：如果不需要后续的分离操作，立即手动释放原始音轨
+            del origin_audio
+            origin_audio = None
+            gc.collect()
+
+        if diarization_params.is_diarize:
             restored_result = self.vad.restore_speech_timestamps(
                 segments=result,
                 speech_chunks=speech_chunks,
@@ -283,6 +292,8 @@ class BaseTranscriptionPipeline(ABC):
 
         if diarization_params.is_diarize:
             try:
+                # 物理保护：由转录向后处理切换时的二次缓冲
+                time.sleep(1.0)
                 progress(0.99, desc=_("正在进行说话人分离与识别..."))
                 result, elapsed_time_diarization = self.diarizer.run(
                     audio=origin_audio,

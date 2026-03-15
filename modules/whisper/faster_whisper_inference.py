@@ -169,9 +169,17 @@ class FasterWhisperInference(BaseTranscriptionPipeline):
         progress(0, desc=_("正在加载音频资源..."))
 
         segments_result = []
+        last_update_time = time.time()
         for segment in segments:
+            current_time = time.time()
             progress_n = segment.start / info.duration
-            progress(progress_n, desc=_("正在转录音频内容..."))
+            
+            # 稳定性建议：在大任务中，高频更新 UI 会消耗大量 RAM 和 WebSocket 连接。
+            # 这里强制节流，每 1.5 秒上报一次进度，给底层计算和系统内存留出呼吸空间。
+            if current_time - last_update_time > 1.5:
+                progress(progress_n, desc=_("正在转录音频内容..."))
+                last_update_time = current_time
+                
             if progress_callback is not None:
                 progress_callback(progress_n)
             segments_result.append(Segment.from_faster_whisper(segment))

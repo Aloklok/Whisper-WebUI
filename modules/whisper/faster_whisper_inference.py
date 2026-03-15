@@ -1,6 +1,7 @@
 import os
 import gc
 import time
+import traceback
 import huggingface_hub
 import numpy as np
 import torch
@@ -101,78 +102,88 @@ class FasterWhisperInference(BaseTranscriptionPipeline):
         except ImportError:
             use_batched = False
 
-        if use_batched and params.batch_size > 1:
-            logger.info(f"使用 BatchedInferencePipeline 加速推理，Batch Size: {params.batch_size}")
-            batched_model = BatchedInferencePipeline(model=self.model)
-            segments, info = batched_model.transcribe(
-                audio=audio,
-                language=params.lang,
-                task="translate" if params.is_translate else "transcribe",
-                beam_size=params.beam_size,
-                log_prob_threshold=params.log_prob_threshold,
-                no_speech_threshold=params.no_speech_threshold,
-                best_of=params.best_of,
-                patience=params.patience,
-                temperature=params.temperature,
-                initial_prompt=params.initial_prompt,
-                compression_ratio_threshold=params.compression_ratio_threshold,
-                length_penalty=params.length_penalty,
-                repetition_penalty=params.repetition_penalty,
-                no_repeat_ngram_size=params.no_repeat_ngram_size,
-                prefix=params.prefix,
-                suppress_blank=params.suppress_blank,
-                suppress_tokens=params.suppress_tokens,
-                max_initial_timestamp=params.max_initial_timestamp,
-                word_timestamps=True,
-                prepend_punctuations=params.prepend_punctuations,
-                append_punctuations=params.append_punctuations,
-                max_new_tokens=params.max_new_tokens,
-                chunk_length=params.chunk_length,
-                hallucination_silence_threshold=params.hallucination_silence_threshold,
-                hotwords=params.hotwords,
-                language_detection_threshold=params.language_detection_threshold,
-                language_detection_segments=params.language_detection_segments,
-                prompt_reset_on_temperature=params.prompt_reset_on_temperature,
-                batch_size=params.batch_size
-            )
-        else:
-            segments, info = self.model.transcribe(
-                audio=audio,
-                language=params.lang,
-                task="translate" if params.is_translate else "transcribe",
-                beam_size=params.beam_size,
-                log_prob_threshold=params.log_prob_threshold,
-                no_speech_threshold=params.no_speech_threshold,
-                best_of=params.best_of,
-                patience=params.patience,
-                temperature=params.temperature,
-                initial_prompt=params.initial_prompt,
-                compression_ratio_threshold=params.compression_ratio_threshold,
-                length_penalty=params.length_penalty,
-                repetition_penalty=params.repetition_penalty,
-                no_repeat_ngram_size=params.no_repeat_ngram_size,
-                prefix=params.prefix,
-                suppress_blank=params.suppress_blank,
-                suppress_tokens=params.suppress_tokens,
-                max_initial_timestamp=params.max_initial_timestamp,
-                word_timestamps=True,  # Set it to always True as it reduces hallucinations
-                prepend_punctuations=params.prepend_punctuations,
-                append_punctuations=params.append_punctuations,
-                max_new_tokens=params.max_new_tokens,
-                chunk_length=params.chunk_length,
-                hallucination_silence_threshold=params.hallucination_silence_threshold,
-                hotwords=params.hotwords,
-                language_detection_threshold=params.language_detection_threshold,
-                language_detection_segments=params.language_detection_segments,
-                prompt_reset_on_temperature=params.prompt_reset_on_temperature,
-            )
+        try:
+            if use_batched and params.batch_size > 1:
+                logger.info(f"使用 BatchedInferencePipeline 加速推理，Batch Size: {params.batch_size}")
+                batched_model = BatchedInferencePipeline(model=self.model)
+                segments, info = batched_model.transcribe(
+                    audio=audio,
+                    language=params.lang,
+                    task="translate" if params.is_translate else "transcribe",
+                    beam_size=params.beam_size,
+                    log_prob_threshold=params.log_prob_threshold,
+                    no_speech_threshold=params.no_speech_threshold,
+                    best_of=params.best_of,
+                    patience=params.patience,
+                    temperature=params.temperature,
+                    initial_prompt=params.initial_prompt,
+                    compression_ratio_threshold=params.compression_ratio_threshold,
+                    length_penalty=params.length_penalty,
+                    repetition_penalty=params.repetition_penalty,
+                    no_repeat_ngram_size=params.no_repeat_ngram_size,
+                    prefix=params.prefix,
+                    suppress_blank=params.suppress_blank,
+                    suppress_tokens=params.suppress_tokens,
+                    max_initial_timestamp=params.max_initial_timestamp,
+                    word_timestamps=True,
+                    prepend_punctuations=params.prepend_punctuations,
+                    append_punctuations=params.append_punctuations,
+                    max_new_tokens=params.max_new_tokens,
+                    chunk_length=params.chunk_length,
+                    hallucination_silence_threshold=params.hallucination_silence_threshold,
+                    hotwords=params.hotwords,
+                    language_detection_threshold=params.language_detection_threshold,
+                    language_detection_segments=params.language_detection_segments,
+                    prompt_reset_on_temperature=params.prompt_reset_on_temperature,
+                    batch_size=params.batch_size
+                )
+            else:
+                segments, info = self.model.transcribe(
+                    audio=audio,
+                    language=params.lang,
+                    task="translate" if params.is_translate else "transcribe",
+                    beam_size=params.beam_size,
+                    log_prob_threshold=params.log_prob_threshold,
+                    no_speech_threshold=params.no_speech_threshold,
+                    best_of=params.best_of,
+                    patience=params.patience,
+                    temperature=params.temperature,
+                    initial_prompt=params.initial_prompt,
+                    compression_ratio_threshold=params.compression_ratio_threshold,
+                    length_penalty=params.length_penalty,
+                    repetition_penalty=params.repetition_penalty,
+                    no_repeat_ngram_size=params.no_repeat_ngram_size,
+                    prefix=params.prefix,
+                    suppress_blank=params.suppress_blank,
+                    suppress_tokens=params.suppress_tokens,
+                    max_initial_timestamp=params.max_initial_timestamp,
+                    word_timestamps=True,  # Set it to always True as it reduces hallucinations
+                    prepend_punctuations=params.prepend_punctuations,
+                    append_punctuations=params.append_punctuations,
+                    max_new_tokens=params.max_new_tokens,
+                    chunk_length=params.chunk_length,
+                    hallucination_silence_threshold=params.hallucination_silence_threshold,
+                    hotwords=params.hotwords,
+                    language_detection_threshold=params.language_detection_threshold,
+                    language_detection_segments=params.language_detection_segments,
+                    prompt_reset_on_temperature=params.prompt_reset_on_temperature,
+                )
+        except Exception as e:
+            logger.error("转录模型执行失败，可能是 CUDA/显存或模型运行时异常。请检查 GPU 状态并尝试降低模型或改为 CPU。错误：%s", e)
+            logger.error(traceback.format_exc())
+            raise
+
         progress(0, desc=_("正在加载音频资源..."))
 
         segments_result = []
         last_update_time = time.time()
+        duration = getattr(info, 'duration', None)
+        if duration is None or duration <= 0:
+            duration = 1.0
+            logger.warning("转录 info.duration 无效（None或<=0），已降为1.0避免除零。")
         for segment in segments:
             current_time = time.time()
-            progress_n = segment.start / info.duration
+            progress_n = min(max(segment.start / duration, 0.0), 0.999)
             
             # 稳定性建议：在大任务中，高频更新 UI 会消耗大量 RAM 和 WebSocket 连接。
             # 这里强制节流，每 1.5 秒上报一次进度，给底层计算和系统内存留出呼吸空间。

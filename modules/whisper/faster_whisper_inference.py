@@ -161,7 +161,6 @@ class FasterWhisperInference(BaseTranscriptionPipeline):
                 language_detection_segments=params.language_detection_segments,
                 prompt_reset_on_temperature=params.prompt_reset_on_temperature,
             )
-            )
         progress(0, desc=_("正在加载音频资源..."))
 
         segments_result = []

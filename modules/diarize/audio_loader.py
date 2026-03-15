@@ -38,9 +38,9 @@ def load_audio(file: Union[str, np.ndarray], sr: int = SAMPLE_RATE) -> np.ndarra
         if file.ndim > 1:
             file = np.mean(file, axis=1)
         
-        # 性能优化：如果采样率已匹配且是一维数组，直接返回引用而非重新加载
-        # 1660 Ti 资源受限环境下，尽量减少副本创建
-        return file
+        # 稳定性恢复：对于 ndarray 输入，始终返回其副本而非原始引用
+        # 避免在流水线的不同阶段（转录 vs 分离）产生意料之外的数据竞争
+        return file.copy()
 
     try:
         cmd = [

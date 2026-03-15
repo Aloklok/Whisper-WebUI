@@ -239,7 +239,9 @@ class BaseTranscriptionPipeline(ABC):
 
         # 显存优化：移除冗余的 deepcopy。
         # 对于 1-2 小时的播客，16kHz 的 float32 数组体积巨大，直接按引用传递或按需复制。
-        origin_audio = audio 
+        # 稳定性恢复：使用 copy() 确保说话人分离阶段拥有独立的音频数据备份。
+        # 之前的引用传递 (origin_audio = audio) 会导致 99% 交接时的数据竞争崩溃。
+        origin_audio = audio.copy() if hasattr(audio, 'copy') else audio
 
         if vad_params.vad_filter:
             progress(0, desc=_("正在过滤音频中的静音部分..."))
@@ -270,8 +272,6 @@ class BaseTranscriptionPipeline(ABC):
         )
         if whisper_params.enable_offload:
             self.offload()
-            # 强化稳定性：卸载 Whisper 后强制静默 1.2 秒，给 GPU 显存物理归还腾挪时间
-            time.sleep(1.2)
             gc.collect()
 
         if vad_params.vad_filter and not diarization_params.is_diarize:
@@ -292,8 +292,6 @@ class BaseTranscriptionPipeline(ABC):
 
         if diarization_params.is_diarize:
             try:
-                # 物理保护：由转录向后处理切换时的二次缓冲
-                time.sleep(1.0)
                 progress(0.99, desc=_("正在进行说话人分离与识别..."))
                 result, elapsed_time_diarization = self.diarizer.run(
                     audio=origin_audio,

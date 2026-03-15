@@ -385,8 +385,14 @@ zh:
   Device: 设备
   Save separated files to output: 导出分离出的音频文件
   Background Music Remover Filter: 背景音乐移除 (UVR)
+  Background Music Remover Filter ● 开启: 背景音乐移除 (UVR) ● 开启
+  Background Music Remover Filter ○ 关闭: 背景音乐移除 (UVR) ○ 关闭
   Voice Detection Filter: 语音检测 (VAD)
+  Voice Detection Filter ● 开启: 语音检测 (VAD) ● 开启
+  Voice Detection Filter ○ 关闭: 语音检测 (VAD) ○ 关闭
   Diarization: 说话人分离 (Diarization)
+  Diarization ● 开启: 说话人分离 (Diarization) ● 开启
+  Diarization ○ 关闭: 说话人分离 (Diarization) ○ 关闭
   Enable this to transcribe only detected voice: 启用此功能将仅转录检测到的语音部分
   Enable Silero VAD Filter: 启用 Silero 语音活动检测 (VAD)
   Enable Diarization: 进行说话人分离处理

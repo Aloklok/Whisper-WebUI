@@ -299,7 +299,7 @@ class App:
                                     with gr.Column(scale=1): # 左侧留白
                                         pass
                                     with gr.Column(scale=8): # 核心阅读区域
-                                        tb_ai_refined_preview = gr.HTML(label=_("AI Refinement Preview"), value="<div style='color: #94a3b8; padding: 20px; text-align: center;'>等待生成中...</div>")
+                                        tb_ai_refined_preview = gr.HTML(label=_("AI Refinement Preview"), value=f"<div style='color: #94a3b8; padding: 20px; text-align: center;'>{_('暂无 AI 整理结果。请先生成字幕文件或在『输出』框粘贴文本，然后点击下方按钮开始整理。')}</div>")
                                         file_ai_refined = gr.Files(label=_("AI Refinement Download (Includes Pretty HTML)"), interactive=False)
                                     with gr.Column(scale=1): # 右侧留白
                                         pass

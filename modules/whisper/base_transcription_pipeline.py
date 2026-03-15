@@ -2,6 +2,10 @@ import os
 import whisper
 import ctranslate2
 import gradio as gr
+try:
+    from gradio_i18n import gettext as _
+except ImportError:
+    _ = lambda x: x
 import torchaudio
 from abc import ABC, abstractmethod
 from typing import BinaryIO, Union, Tuple, List, Callable

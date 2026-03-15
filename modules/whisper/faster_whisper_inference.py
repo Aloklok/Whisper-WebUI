@@ -10,6 +10,10 @@ import ast
 import ctranslate2
 import whisper
 import gradio as gr
+try:
+    from gradio_i18n import gettext as _
+except ImportError:
+    _ = lambda x: x
 from argparse import Namespace
 
 from modules.utils.paths import (FASTER_WHISPER_MODELS_DIR, DIARIZATION_MODELS_DIR, UVR_MODELS_DIR, OUTPUT_DIR,

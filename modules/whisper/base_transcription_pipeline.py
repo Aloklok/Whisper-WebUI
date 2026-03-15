@@ -25,6 +25,7 @@ from modules.whisper.data_classes import *
 from modules.diarize.diarizer import Diarizer
 from modules.vad.silero_vad import SileroVAD
 from modules.llm.llm_processor import LLMProcessor
+from modules.llm.formatters import format_refined_text_to_html
 
 
 logger = get_logger()
@@ -435,9 +436,9 @@ class BaseTranscriptionPipeline(ABC):
                                     if refined_text and not (refined_text.startswith('Error') or refined_text.startswith('Error:')):
                                         # 保存 结果
                                         txt_path = processor.save_refined_text(file_path, refined_text)
-                                        # 创建带有基础美化的预览 HTML
-                                        html_body = f"<div class='refined-content' style='white-space: pre-wrap;'>{refined_text.replace('<','&lt;').replace('>','&gt;')}</div>"
-                                        html_path = processor.save_refined_html(file_path, html_body, "")
+                                        # 使用精美 HTML 引擎美化预览
+                                        pretty_html = format_refined_text_to_html(refined_text)
+                                        html_path = processor.save_refined_html(file_path, pretty_html, "")
                                         
                                         # 尝试导出 PDF
                                         try:

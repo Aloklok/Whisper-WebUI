@@ -63,6 +63,7 @@ from modules.utils.podcast_manager import download_podcast_audio
 from modules.translation.deepl_api import DeepLAPI
 from modules.whisper.data_classes import *
 from modules.llm.llm_processor import LLMProcessor
+from modules.llm.formatters import format_refined_text_to_html
 from modules.utils.logger import get_logger
 from clean_temp import clean_temp_dir
 
@@ -70,104 +71,7 @@ from clean_temp import clean_temp_dir
 logger = get_logger()
 
 
-def format_refined_text_to_html(text: str) -> str:
-    if not text or text.startswith("Error"):
-        return f"<div style='color: red; padding: 20px;'>{text}</div>"
-    
-    # 颜色与图标库
-    colors = ["#f87171", "#fbbf24", "#34d399", "#60a5fa", "#a78bfa", "#f472b6"]
-    icons = ["👤", "🐧", "🌟", "🍀", "💎", "🔥"]
-    
-    html = '<div class="transcript-container">'
-    
-    lines = text.split('\n')
-    current_speaker = None
-    current_content = []
-    
-    def flush_message(speaker, content_list):
-        if not speaker or not content_list:
-            return ""
-        
-        try:
-            # 提取数字，例如 SPEAKER_01 -> 1
-            idx_str = ''.join(filter(str.isdigit, speaker))
-            idx = int(idx_str) if idx_str else 0
-        except:
-            idx = 0
-            
-        color = colors[idx % len(colors)]
-        icon = icons[idx % len(icons)]
-        name = f"发言人 {idx}"
-        content = "\n".join(content_list).strip()
-        
-        if not content: return ""
-        
-        return f"""
-        <div class="transcript-item">
-            <div class="speaker-avatar" style="background-color: {color}">{icon}</div>
-            <div class="speaker-body">
-                <div class="speaker-header">
-                    <span class="speaker-name">{name}</span>
-                </div>
-                <div class="speaker-text">{content}</div>
-            </div>
-        </div>
-        """
 
-    section_started = False
-    for line in lines:
-        line = line.strip()
-        if not line: continue
-        
-        # 处理话题/核心议题标签
-        if (line.startswith('【') and '】' in line) or line.startswith('###'):
-            # 先把当前正在记录的消息刷新掉
-            msg_html = flush_message(current_speaker, current_content)
-            
-            # 如果已经在一个话题块里，先闭合它
-            if section_started:
-                html += msg_html + '</div>'
-            else:
-                html += msg_html
-                
-            current_speaker = None
-            current_content = []
-            
-            # 开启新的话题块容器，这样 sticky header 就能“推走”旧的
-            topic = line.strip('【】# ')
-            html += '<div class="topic-section">'
-            html += f'<div class="topic-tag">{topic}</div>'
-            section_started = True
-            continue
-            
-        # 处理说话人标签 SPEAKER_XX|
-        if '|' in line and line.startswith('SPEAKER_'):
-            parts = line.split('|', 1)
-            speaker_tag = parts[0]
-            content = parts[1] if len(parts) > 1 else ""
-            
-            if speaker_tag == current_speaker:
-                current_content.append(content)
-            else:
-                html += flush_message(current_speaker, current_content)
-                current_speaker = speaker_tag
-                current_content = [content]
-        else:
-            if current_speaker:
-                current_content.append(line)
-            else:
-                # 兜底：处理没有标签的纯文本
-                html += f'<div class="speaker-text" style="margin-bottom:15px; border-radius:12px; background:#f0f0f0; padding:10px 15px;">{line}</div>'
-                
-    # 结尾闭合
-    last_msg = flush_message(current_speaker, current_content)
-    if section_started:
-        html += last_msg + '</div>'
-    else:
-        html += last_msg
-        
-    html += '</div>'
-    return html
 
 
 class App:
@@ -376,31 +280,29 @@ class App:
                                                                visible=self.args.colab,
                                                                value=True)
                         pipeline_params, dd_file_format, cb_timestamp, cb_auto_llm_refine = self.create_pipeline_inputs()
-                        with gr.Group(): # 自动 AI 润色自成一个独立卡片
-                            cb_auto_llm_refine.visible = True
-                            cb_auto_llm_refine.render()
-
-                        with gr.Row():
-                            btn_run = gr.Button(_("GENERATE SUBTITLE FILE"), variant="primary")
-                        
-                        with gr.Row():
-                            tb_indicator = gr.Textbox(label=_("Output"), scale=5, interactive=True)
-                            files_subtitles = gr.Files(label=_("Downloadable output file"), scale=3, interactive=False)
-                            btn_openfolder = gr.Button('📂', scale=1)
-
-                        # AI 洗稿/总结预览区
-                        with gr.Accordion(_("✨ AI 一键整理 (LLM Post-Processing)"), open=True, elem_id="acc_ai_post_processing"):
+                        # 结果输出主容器：将转录与 AI 润色合并，确保进度条全局统一
+                        with gr.Column(variant="compact", elem_id="main_output_container"):
                             with gr.Row():
-                                btn_ai_refine = gr.Button(_("✨ AI One-Click Refine"), variant="secondary")
-                            
+                                btn_run = gr.Button(_("GENERATE SUBTITLE FILE"), variant="primary")
+
                             with gr.Row():
-                                with gr.Column(scale=1): # 左侧留白
-                                    pass
-                                with gr.Column(scale=8): # 核心阅读区域
-                                    tb_ai_refined_preview = gr.HTML(label=_("AI Refinement Preview"))
-                                    file_ai_refined = gr.Files(label=_("AI Refinement Download (Includes Pretty HTML)"), interactive=False)
-                                with gr.Column(scale=1): # 右侧留白
-                                    pass
+                                tb_indicator = gr.Textbox(label=_("Output"), scale=5, interactive=True)
+                                files_subtitles = gr.Files(label=_("Downloadable output file"), scale=3, interactive=False)
+                                btn_openfolder = gr.Button('📂', scale=1)
+
+                            # AI 洗稿/总结预览区
+                            with gr.Accordion(_("✨ AI 一键整理润色 (LLM Post-Processing)"), open=True, elem_id="acc_ai_post_processing"):
+                                with gr.Row():
+                                    btn_ai_refine = gr.Button(_("✨ AI One-Click Refine"), variant="secondary")
+                                
+                                with gr.Row():
+                                    with gr.Column(scale=1): # 左侧留白
+                                        pass
+                                    with gr.Column(scale=8): # 核心阅读区域
+                                        tb_ai_refined_preview = gr.HTML(label=_("AI Refinement Preview"), value="<div style='color: #94a3b8; padding: 20px; text-align: center;'>等待生成中...</div>")
+                                        file_ai_refined = gr.Files(label=_("AI Refinement Download (Includes Pretty HTML)"), interactive=False)
+                                    with gr.Column(scale=1): # 右侧留白
+                                        pass
 
                         params = [input_file, tb_input_folder, cb_include_subdirectory, cb_save_same_dir,
                                   dd_file_format, cb_timestamp]
@@ -426,16 +328,22 @@ class App:
                                 refined_files = []
                                 
                                 if files and len(files) > 1:
-                                    # find the .html file for preview
+                                    # 优先从 TXT 文件读取内容并动态生成精美 HTML 片段进行预览（避免加载全文档结构导致渲染异常）
+                                    refined_txt_content = ""
                                     for f in files:
                                         f_path = str(f.name if hasattr(f, "name") else f)
-                                        if f_path.endswith("_AI_Refined_Pretty.html"):
+                                        if f_path.endswith("_AI_Refined.txt"):
                                             try:
                                                 with open(f_path, "r", encoding="utf-8") as hf:
-                                                    refined_html = hf.read()
+                                                    refined_txt_content = hf.read()
+                                                break
                                             except:
                                                 pass
-                                    # find and filter refine-related files for the LLM download panel
+                                    
+                                    if refined_txt_content:
+                                        refined_html = format_refined_text_to_html(refined_txt_content)
+
+                                    # 筛选所有润色相关文件供下载面板使用
                                     for f in files:
                                         f_path = str(f.name if hasattr(f, "name") else f)
                                         if "_AI_Refined" in f_path:

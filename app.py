@@ -169,7 +169,7 @@ class App:
                                        interactive=True)
 
         def get_status_text(is_enabled):
-            # 将 ON/OFF 直接硬编码为中文符号，防止 i18n 框架在初始化时因上下文缺失回退到英文
+            # 装饰性后缀：保持简洁，不参与 _() 匹配以防混淆
             return " ● 开启" if is_enabled else " ○ 关闭"
 
         def update_acc_status(is_enabled, label_prefix, base_id):
@@ -185,7 +185,7 @@ class App:
         uvr_label = _("Background Music Remover Filter")
         uvr_id = "acc_uvr"
         # 初始化时直接显示中文状态，解决 Gradio-i18n 冷启动字符串拼接不生效的问题
-        init_status = " ● 开启" if uvr_params['is_separate_bgm'] else " ○ 关闭"
+        init_status = get_status_text(uvr_params['is_separate_bgm'])
         with gr.Accordion(f"{uvr_label}{init_status}", 
                           open=False, 
                           elem_id=uvr_id) as acc_uvr:
@@ -303,7 +303,7 @@ class App:
                                     with gr.Column(scale=1): # 左侧留白
                                         pass
                                     with gr.Column(scale=8): # 核心阅读区域
-                                        tb_ai_refined_preview = gr.HTML(label=_("AI Refinement Preview"), value=f"<div style='color: #94a3b8; padding: 20px; text-align: center;'>{_('暂无 AI 整理结果。请先生成字幕文件或在『输出』框粘贴文本，然后点击下方按钮开始整理。')}</div>")
+                                        tb_ai_refined_preview = gr.HTML(label=_("AI Refinement Preview"), value=f"<div style='color: #94a3b8; padding: 20px; text-align: center;'>{_('暂无预览内容。请先生成或粘贴文本，然后点击上方按钮开始处理。')}</div>")
                                         file_ai_refined = gr.Files(label=_("AI Refinement Download (Includes Pretty HTML)"), interactive=False)
                                     with gr.Column(scale=1): # 右侧留白
                                         pass

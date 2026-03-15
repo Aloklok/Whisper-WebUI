@@ -233,10 +233,12 @@ class BaseTranscriptionPipeline(ABC):
                 self.music_separator.offload()
             elapsed_time_bgm_sep = time.time() - start_time
 
-        origin_audio = deepcopy(audio)
+        # 显存优化：移除冗余的 deepcopy。
+        # 对于 1-2 小时的播客，16kHz 的 float32 数组体积巨大，直接按引用传递或按需复制。
+        origin_audio = audio 
 
         if vad_params.vad_filter:
-            progress(0, desc="Filtering silent parts from audio..")
+            progress(0, desc=_("正在过滤音频中的静音部分..."))
             vad_options = VadOptions(
                 threshold=vad_params.threshold,
                 min_speech_duration_ms=vad_params.min_speech_duration_ms,
@@ -276,19 +278,24 @@ class BaseTranscriptionPipeline(ABC):
                 logger.info("VAD detected no speech segments in the audio.")
 
         if diarization_params.is_diarize:
-            progress(0.99, desc="Diarizing speakers..")
-            result, elapsed_time_diarization = self.diarizer.run(
-                audio=origin_audio,
-                use_auth_token=diarization_params.hf_token if diarization_params.hf_token else os.environ.get("HF_TOKEN"),
-                transcribed_result=result,
-                device=diarization_params.diarization_device,
-                min_speakers=diarization_params.min_speakers,
-                max_speakers=diarization_params.max_speakers
-            )
-            # 播客深度优化：同说话人片段合并逻辑
-            result = self.merge_segments_by_speaker(result)
-            if diarization_params.enable_offload:
-                self.diarizer.offload()
+            try:
+                progress(0.99, desc=_("正在进行说话人分离与识别..."))
+                result, elapsed_time_diarization = self.diarizer.run(
+                    audio=origin_audio,
+                    use_auth_token=diarization_params.hf_token if diarization_params.hf_token else os.environ.get("HF_TOKEN"),
+                    transcribed_result=result,
+                    device=diarization_params.diarization_device,
+                    min_speakers=diarization_params.min_speakers,
+                    max_speakers=diarization_params.max_speakers
+                )
+                # 播客深度优化：同说话人片段合并逻辑
+                result = self.merge_segments_by_speaker(result)
+            except Exception as diar_err:
+                logger.error(f"Diarization failed but continuing: {diar_err}")
+                logger.info("系统已自动跳过说话人分离以保护主流程不崩溃。")
+            finally:
+                if diarization_params.enable_offload:
+                    self.diarizer.offload()
 
         self.cache_parameters(
             params=params,
@@ -640,12 +647,17 @@ class BaseTranscriptionPipeline(ABC):
     def offload(self):
         """Offload the model and free up the memory"""
         if self.model is not None:
+            # 强化卸载：显式移除引用并清理 ctranslate2/torch 控制块
             del self.model
             self.model = None
+
+        gc.collect() # 触发 Python 垃圾回收
+
         if self.device == "cuda":
             torch.cuda.empty_cache()
+            torch.cuda.ipc_collect() # 物理清理进程间通信共享显存
             torch.cuda.reset_max_memory_allocated()
-        if self.device == "xpu":
+        elif self.device == "xpu":
             torch.xpu.empty_cache()
             torch.xpu.reset_accumulated_memory_stats()
             torch.xpu.reset_peak_memory_stats()

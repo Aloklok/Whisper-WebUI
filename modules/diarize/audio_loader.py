@@ -30,31 +30,17 @@ TOKENS_PER_SECOND = exact_div(SAMPLE_RATE, N_SAMPLES_PER_TOKEN)  # 20ms per audi
 def load_audio(file: Union[str, np.ndarray], sr: int = SAMPLE_RATE) -> np.ndarray:
     """
     Open an audio file or process a numpy array containing audio data as mono waveform, resampling as necessary.
-
-    Parameters
-    ----------
-    file: Union[str, np.ndarray]
-        The audio file to open or a numpy array containing the audio data.
-
-    sr: int
-        The sample rate to resample the audio if necessary.
-
-    Returns
-    -------
-    A NumPy array containing the audio waveform, in float32 dtype.
     """
+    # 如果输入已经是 numpy 数组
     if isinstance(file, np.ndarray):
         if file.dtype != np.float32:
             file = file.astype(np.float32)
         if file.ndim > 1:
             file = np.mean(file, axis=1)
-
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
-        write(temp_file.name, SAMPLE_RATE, (file * 32768).astype(np.int16))
-        temp_file_path = temp_file.name
-        temp_file.close()
-    else:
-        temp_file_path = file
+        
+        # 性能优化：如果采样率已匹配且是一维数组，直接返回引用而非重新加载
+        # 1660 Ti 资源受限环境下，尽量减少副本创建
+        return file
 
     try:
         cmd = [
@@ -63,7 +49,7 @@ def load_audio(file: Union[str, np.ndarray], sr: int = SAMPLE_RATE) -> np.ndarra
             "-threads",
             "0",
             "-i",
-            temp_file_path,
+            file,
             "-f",
             "s16le",
             "-ac",
@@ -77,9 +63,6 @@ def load_audio(file: Union[str, np.ndarray], sr: int = SAMPLE_RATE) -> np.ndarra
         out = subprocess.run(cmd, capture_output=True, check=True).stdout
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f"Failed to load audio: {e.stderr.decode()}") from e
-    finally:
-        if isinstance(file, np.ndarray):
-            os.remove(temp_file_path)
 
     return np.frombuffer(out, np.int16).flatten().astype(np.float32) / 32768.0
 

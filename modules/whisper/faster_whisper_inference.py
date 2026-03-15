@@ -161,17 +161,24 @@ class FasterWhisperInference(BaseTranscriptionPipeline):
                 language_detection_segments=params.language_detection_segments,
                 prompt_reset_on_temperature=params.prompt_reset_on_temperature,
             )
-        progress(0, desc="Loading audio..")
+            )
+        progress(0, desc=_("正在加载音频资源..."))
 
         segments_result = []
         for segment in segments:
             progress_n = segment.start / info.duration
-            progress(progress_n, desc="Transcribing..")
+            progress(progress_n, desc=_("正在转录音频内容..."))
             if progress_callback is not None:
                 progress_callback(progress_n)
             segments_result.append(Segment.from_faster_whisper(segment))
 
         elapsed_time = time.time() - start_time
+
+        # 显存清理：显式删除 ctranslate2 生成器引用并触发回收
+        # 这一步对 6GB 以下显存的显卡至关重要，防止资源挂起
+        del segments
+        gc.collect()
+        
         return segments_result, elapsed_time
 
     def update_model(self,
@@ -193,7 +200,7 @@ class FasterWhisperInference(BaseTranscriptionPipeline):
         progress: gr.Progress
             Indicator to show progress directly in gradio.
         """
-        progress(0, desc="Initializing Model..")
+        progress(0, desc=_("正在初始化转录模型..."))
         model_size = normalize_model_name(model_size)
 
         model_size_dirname = model_size.replace("/", "--") if "/" in model_size else model_size
@@ -217,6 +224,10 @@ class FasterWhisperInference(BaseTranscriptionPipeline):
             local_files_only = True
 
         self.current_compute_type = compute_type
+        # 显存优化：在加载新模型前彻底卸载旧模型
+        if self.model is not None:
+            self.offload()
+
         self.model = faster_whisper.WhisperModel(
             device=self.device,
             model_size_or_path=self.current_model_size,

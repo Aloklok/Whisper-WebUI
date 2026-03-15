@@ -1,4 +1,5 @@
 import os
+import gc
 import time
 import huggingface_hub
 import numpy as np
